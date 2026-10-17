@@ -1,6 +1,19 @@
 <?php
 header('Content-Type: application/json');
 
+$dbUrl = getenv('POSTGRES_URL') ?: getenv('DATABASE_URL');
+$pdo = null;
+
+if ($dbUrl) {
+    $dbOpts = parse_url($dbUrl);
+    $dsn = "pgsql:host=" . ($dbOpts['host'] ?? '') . ";port=" . ($dbOpts['port'] ?? 5432) . ";dbname=" . ltrim($dbOpts['path'] ?? '', '/') . ";sslmode=require";
+    try {
+        $pdo = new PDO($dsn, $dbOpts['user'] ?? '', $dbOpts['pass'] ?? '', [PDO::ATTR_TIMEOUT => 3]);
+    } catch (Exception $e) {
+        $pdo = null;
+    }
+}
+
 $privateKeyPath = __DIR__ . '/../private_key.pem';
 if (!file_exists($privateKeyPath)) {
     http_response_code(500);
@@ -33,7 +46,7 @@ $payload = [
         "sha256" => "b54be9ef4af47ac9c901e83885ae67705bb7a4ec1d64c5a70adc15c86754ff50",
         "size" => 779152,
         "min_app_version" => "2.0.8",
-        "url" => "https://shadowcheat.com/api/v1/library.php?version=2.0.42"
+        "url" => "https://shadow-license-server.vercel.app/api/v1/library.php?version=2.0.42"
     ],
     "min_app_version" => "2.0.8"
 ];
