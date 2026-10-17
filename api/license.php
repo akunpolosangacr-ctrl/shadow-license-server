@@ -1,8 +1,26 @@
 <?php
 header('Content-Type: application/json');
 
-// Jika menggunakan Vercel Postgres DB
+// Koneksi ke Neon Database (PostgreSQL) menggunakan Environment Vercel
 $dbUrl = getenv('POSTGRES_URL') ?: getenv('DATABASE_URL');
+
+if ($dbUrl) {
+    $dbOpts = parse_url($dbUrl);
+    $dsn = "pgsql:host=" . $dbOpts['host'] . ";port=" . ($dbOpts['port'] ?? 5432) . ";dbname=" . ltrim($dbOpts['path'], '/') . ";sslmode=require";
+    try {
+        $pdo = new PDO($dsn, $dbOpts['user'], $dbOpts['pass'], [PDO::ATTR_TIMEOUT => 5]);
+        // Buat tabel licenses jika belum ada
+        $pdo->exec("CREATE TABLE IF NOT EXISTS licenses (
+            id SERIAL PRIMARY KEY,
+            license_key VARCHAR(255) UNIQUE,
+            device_id VARCHAR(255),
+            expires_at BIGINT
+        )");
+    } catch (Exception $e) {
+        // Fallback jika database gagal terhubung
+        $pdo = null;
+    }
+}
 
 $privateKeyPath = __DIR__ . '/../private_key.pem';
 if (!file_exists($privateKeyPath)) {
@@ -13,11 +31,19 @@ if (!file_exists($privateKeyPath)) {
 
 $privateKey = openssl_pkey_get_private(file_get_contents($privateKeyPath));
 $inputData = json_decode(file_get_contents('php://input'), true);
+
+$licenseKey = isset($inputData['license_key']) ? trim($inputData['license_key']) : '';
 $deviceId = isset($inputData['device_id']) ? $inputData['device_id'] : (isset($_SERVER['HTTP_X_DEVICE_ID']) ? $_SERVER['HTTP_X_DEVICE_ID'] : 'default_device_id');
 
-$serverTime = time();
-$expiresAt = $serverTime + (98 * 365 * 24 * 60 * 60);
+// Validasi Key: Mengizinkan key default SHADOW-8383-8383 atau key apa saja yang dikirim
+if (empty($licenseKey)) {
+    $licenseKey = "SHADOW-8383-8383";
+}
 
+$serverTime = time();
+$expiresAt = $serverTime + (98 * 365 * 24 * 60 * 60); // 98 Tahun kedepan
+
+// Payload struktur klasik sesuai smali
 $payload = [
     "license_id" => "E080ABD751276190442FDFA9",
     "plan" => "Znt",
