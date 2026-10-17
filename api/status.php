@@ -1,19 +1,6 @@
 <?php
 header('Content-Type: application/json');
 
-$dbUrl = getenv('POSTGRES_URL') ?: getenv('DATABASE_URL');
-$pdo = null;
-
-if ($dbUrl) {
-    $dbOpts = parse_url($dbUrl);
-    $dsn = "pgsql:host=" . ($dbOpts['host'] ?? '') . ";port=" . ($dbOpts['port'] ?? 5432) . ";dbname=" . ltrim($dbOpts['path'] ?? '', '/') . ";sslmode=require";
-    try {
-        $pdo = new PDO($dsn, $dbOpts['user'] ?? '', $dbOpts['pass'] ?? '', [PDO::ATTR_TIMEOUT => 3]);
-    } catch (Exception $e) {
-        $pdo = null;
-    }
-}
-
 $privateKeyPath = __DIR__ . '/../private_key.pem';
 if (!file_exists($privateKeyPath)) {
     http_response_code(500);
@@ -28,10 +15,11 @@ $rawKey = isset($inputData['license_key']) ? trim($inputData['license_key']) : '
 $licenseKey = preg_replace('/[^A-Za-z0-9\-]/', '', $rawKey);
 
 if (empty($licenseKey)) {
-    $licenseKey = "SHADOW-8383-8383";
+    echo json_encode(["ok" => false, "message" => "Chave inválida."]);
+    exit;
 }
 
-$deviceId = isset($inputData['device_id']) ? $inputData['device_id'] : (isset($_SERVER['HTTP_X_DEVICE_ID']) ? $_SERVER['HTTP_X_DEVICE_ID'] : 'default_device_id');
+$deviceId = isset($inputData['device_id']) ? $inputData['device_id'] : 'default_device_id';
 
 $serverTime = time();
 $expiresAt = $serverTime + (98 * 365 * 24 * 60 * 60);
