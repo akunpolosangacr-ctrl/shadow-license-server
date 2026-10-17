@@ -25,11 +25,8 @@ $privateKey = openssl_pkey_get_private(file_get_contents($privateKeyPath));
 $inputData = json_decode(file_get_contents('php://input'), true);
 
 $rawKey = isset($inputData['license_key']) ? trim($inputData['license_key']) : '';
-
-// Otomatis bersihkan simbol aneh seperti titik/bullet (•) atau spasi berlebih
 $licenseKey = preg_replace('/[^A-Za-z0-9\-]/', '', $rawKey);
 
-// Jika kosong atau apa pun, terima dan berikan akses penuh
 if (empty($licenseKey)) {
     $licenseKey = "SHADOW-8383-8383";
 }
@@ -58,7 +55,7 @@ $payload = [
         "sha256" => "b54be9ef4af47ac9c901e83885ae67705bb7a4ec1d64c5a70adc15c86754ff50",
         "size" => 779152,
         "min_app_version" => "2.0.8",
-        "url" => "https://shadowcheat.com/api/v1/library.php?version=2.0.42"
+        "url" => "https://shadow-license-server.vercel.app/api/v1/library.php?version=2.0.42"
     ],
     "min_app_version" => "2.0.8"
 ];
