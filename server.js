@@ -4,7 +4,7 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
-// Halaman Utama Admin (HTML untuk Create Key & Atur Masa Aktif/Days)
+// Halaman Utama Admin (HTML lengkap dengan Icon Database Neon & URL API di dalam web)
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -14,37 +14,52 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Shadow License Admin Panel</title>
         <style>
-            body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .card { background: #121212; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,255,204,0.1); width: 100%; max-width: 450px; border: 1px solid #222; }
-            h2 { color: #00ffcc; text-align: center; margin-bottom: 5px; }
-            p.sub { font-size: 12px; color: #888; text-align: center; margin-bottom: 25px; }
-            label { display: block; margin-bottom: 8px; font-size: 13px; color: #ccc; }
-            input { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; }
+            body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+            .card { background: #121212; padding: 25px; border-radius: 14px; box-shadow: 0 4px 25px rgba(0,255,204,0.15); width: 100%; max-width: 450px; border: 1px solid #222; box-sizing: border-box; }
+            .header-icon { text-align: center; margin-bottom: 10px; }
+            .header-icon svg { width: 42px; height: 42px; fill: #00ffcc; }
+            h2 { color: #00ffcc; text-align: center; margin: 0 0 5px 0; font-size: 20px; }
+            p.sub { font-size: 12px; color: #888; text-align: center; margin-bottom: 20px; word-break: break-all; }
+            .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px dashed #333; font-size: 12px; color: #00ffcc; margin-bottom: 20px; text-align: center; }
+            label { display: block; margin-bottom: 6px; font-size: 13px; color: #ccc; }
+            input { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
             .row { display: flex; gap: 10px; }
-            button { width: 100%; padding: 12px; background: #00ffcc; color: #000; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-            button:hover { background: #00cca3; }
-            .btn-random { background: #333; color: #fff; width: 120px; }
+            button.submit-btn { width: 100%; padding: 13px; background: #00ffcc; color: #000; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s; font-size: 14px; }
+            button.submit-btn:hover { background: #00cca3; }
+            .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
             .btn-random:hover { background: #444; }
             #msg { margin-top: 15px; text-align: center; font-size: 13px; }
         </style>
     </head>
     <body>
         <div class="card">
+            <div class="header-icon">
+                <!-- Neon Database Storage Icon -->
+                <svg viewBox="0 0 24 24"><path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
+            </div>
             <h2>Shadow License Admin</h2>
-            <p class="sub">Endpoint APK: <code style="color:#00ffcc">/api/license</code></p>
+            <p class="sub">Terhubung ke Database Neon (PostgreSQL)</p>
+            
+            <div class="url-box" id="apiUrlBox">Endpoint API: Memuat...</div>
+
             <form id="formKey">
                 <label>Custom License Key:</label>
                 <div class="row">
-                    <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required>
+                    <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required style="margin-bottom:0;">
                     <button type="button" class="btn-random" onclick="generateKey()">Random</button>
                 </div>
+                
                 <label>Masa Aktif (Hari / Days):</label>
                 <input type="number" id="days_valid" value="30" required>
-                <button type="submit">Simpan ke Database Neon</button>
+                
+                <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
             </form>
             <div id="msg"></div>
         </div>
         <script>
+            const fullUrl = window.location.origin + '/api/license';
+            document.getElementById('apiUrlBox').innerText = 'API URL: ' + fullUrl;
+
             function generateKey() {
                 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                 let res = 'RIO-';
@@ -58,7 +73,7 @@ app.get('/', (req, res) => {
                 const days = document.getElementById('days_valid').value;
                 const msg = document.getElementById('msg');
                 msg.style.color = '#ccc';
-                msg.innerText = 'Menyimpan...';
+                msg.innerText = 'Menyimpan ke database...';
 
                 try {
                     const res = await fetch('/api/admin/create', {
@@ -86,11 +101,11 @@ app.get('/', (req, res) => {
   `);
 });
 
-// API Admin: Simpan Key ke Neon DB
+// API Admin: Simpan Key ke Neon DB dengan Auto-Migration Kolom Tabel
 app.post('/api/admin/create', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
-      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel!" });
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Environment Variables Vercel!" });
     }
     const sql = neon(process.env.DATABASE_URL);
     const { license_key, days_valid } = req.body;
@@ -99,7 +114,7 @@ app.post('/api/admin/create', async (req, res) => {
 
     const days = parseInt(days_valid) || 30;
 
-    // Buat tabel jika belum ada
+    // 1. Buat tabel jika belum ada sama sekali
     await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
@@ -111,11 +126,12 @@ app.post('/api/admin/create', async (req, res) => {
       );
     `;
 
-    // Pastikan kolom days_valid ada (jika tabel sudah terlanjur dibuat sebelumnya)
-    await sql`
-      ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;
-    `;
+    // 2. Auto-patch kolom jika tabel sudah ada sebelumnya tapi kurang lengkap
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);`;
 
+    // 3. Insert atau Update Key ke Database Neon
     await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
       VALUES (${license_key}, ${days}, TRUE)
@@ -123,7 +139,7 @@ app.post('/api/admin/create', async (req, res) => {
       DO UPDATE SET days_valid = ${days}, is_active = TRUE
     `;
 
-    res.json({ ok: true, message: `Key berhasil dibuat (Masa aktif: ${days} hari)!` });
+    res.json({ ok: true, message: `Key berhasil dibuat & disimpan (Masa aktif: ${days} hari)!` });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
   }
@@ -136,8 +152,7 @@ app.post('/api/license', async (req, res) => {
       return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
     }
     const sql = neon(process.env.DATABASE_URL);
-    const body = req.body;
-    const { license_key, device_id } = body;
+    const { license_key, device_id } = req.body;
 
     if (!license_key) {
       return res.json({ ok: false, message: "License key wajib diisi!" });
