@@ -148,13 +148,13 @@ app.get('/', requireAuth, (req, res) => {
                     if(data.ok && data.licenses.length > 0) {
                         document.getElementById('storageStatus').innerText = data.licenses.length + ' / 500 Keys (Aman)';
                         document.getElementById('storageBar').style.width = Math.min((data.licenses.length / 500) * 100, 100) + '%';
-                        tbody.innerHTML = data.licenses.map(item => \`
+                        tbody.innerHTML = data.licenses.map(item => `
                             <tr>
-                                <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
-                                <td>\${item.duration_value} \${item.duration_unit === 'minutes' ? 'Menit' : item.duration_unit === 'hours' ? 'Jam' : 'Hari'}</td>
-                                <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
+                                <td style="font-family: monospace; color: #00ffcc;">${item.license_key}</td>
+                                <td>${item.duration_value}${item.duration_unit === 'minutes' ? 'Menit' : item.duration_unit === 'hours' ? 'Jam' : 'Hari'}</td>
+                                <td><button class="btn-delete" onclick="deleteKey(${item.id})">Hapus</button></td>
                             </tr>
-                        \`).join('');
+                        `).join('');
                     } else {
                         document.getElementById('storageStatus').innerText = '0 / 500 Keys (Kosong)';
                         document.getElementById('storageBar').style.width = '2%';
@@ -222,7 +222,7 @@ app.get('/', requireAuth, (req, res) => {
 
 // Helper function to ensure table has the correct columns
 async function ensureTable(sql) {
-  await sql\`CREATE TABLE IF NOT EXISTS licenses (
+  await sql`CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY, 
     license_key VARCHAR(255) UNIQUE NOT NULL, 
     duration_value INT DEFAULT 30, 
@@ -230,7 +230,7 @@ async function ensureTable(sql) {
     device_id VARCHAR(255), 
     is_active BOOLEAN DEFAULT TRUE, 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );\`;
+  );`;
 }
 
 // API Routes
@@ -239,7 +239,7 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
     if (!process.env.DATABASE_URL) return res.json({ ok: true, licenses: [] });
     const sql = neon(process.env.DATABASE_URL);
     await ensureTable(sql);
-    const licenses = await sql\`SELECT id, license_key, duration_value, duration_unit, created_at FROM licenses ORDER BY id DESC\`;
+    const licenses = await sql`SELECT id, license_key, duration_value, duration_unit, created_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
   } catch (err) { res.json({ ok: true, licenses: [] }); }
 });
@@ -249,7 +249,7 @@ app.post('/api/admin/delete', requireAuth, async (req, res) => {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
-    await sql\`DELETE FROM licenses WHERE id = \${id}\`;
+    await sql`DELETE FROM licenses WHERE id = ${id}`;
     res.json({ ok: true, message: "Key berhasil dihapus!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
@@ -267,12 +267,12 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     await ensureTable(sql);
     
     // Insert or update with fresh created_at timestamp
-    await sql\`INSERT INTO licenses (license_key, duration_value, duration_unit, is_active) 
-              VALUES (\${license_key}, \${val}, \${unit}, TRUE) 
+    await sql`INSERT INTO licenses (license_key, duration_value, duration_unit, is_active) 
+              VALUES (${license_key}, ${val}, ${unit}, TRUE) 
               ON CONFLICT (license_key) 
-              DO UPDATE SET duration_value = \${val}, duration_unit = \${unit}, is_active = TRUE, created_at = CURRENT_TIMESTAMP\`;
+              DO UPDATE SET duration_value = ${val}, duration_unit = ${unit}, is_active = TRUE, created_at = CURRENT_TIMESTAMP`;
     
-    res.json({ ok: true, message: \`Key berhasil dibuat (\${val} \${unit === 'minutes' ? 'Menit' : unit === 'hours' ? 'Jam' : 'Hari'})!\` });
+    res.json({ ok: true, message: `Key berhasil dibuat (${val} ${unit === 'minutes' ? 'Menit' : unit === 'hours' ? 'Jam' : 'Hari'})!` });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
@@ -283,7 +283,7 @@ app.post('/api/license', async (req, res) => {
     const { license_key, device_id } = req.body;
     if (!license_key) return res.json({ ok: false, message: "License key wajib diisi!" });
 
-    const result = await sql\`SELECT * FROM licenses WHERE license_key = \${license_key} AND is_active = TRUE\`;
+    const result = await sql`SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE`;
     if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid atau sudah tidak aktif!" });
 
     const record = result[0];
@@ -314,8 +314,8 @@ app.post('/api/license', async (req, res) => {
     const now = Math.floor(nowMs / 1000);
 
     const licenseData = {
-      license_id: \`CUSTOM-\${record.id}\`,
-      plan: \`VIP \${val} \${unit.toUpperCase()}\`,
+      license_id: `CUSTOM-${record.id}`,
+      plan: `VIP ${val} ${unit.toUpperCase()}`,
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: device_id || record.device_id || "unknown",
       expires_at: expiresAt,
@@ -333,7 +333,7 @@ app.post('/api/license', async (req, res) => {
       min_app_version: "2.0.8"
     };
 
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     res.json({ ok: true, data: base64Data, signature: "dummy_signature" });
   } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
 });
