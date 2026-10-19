@@ -4,8 +4,34 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
-// Halaman Utama Admin (HTML lengkap dengan Form Create dan Tabel List Key)
-app.get('/', (req, res) => {
+// Kredensial Admin Sesuai Permintaan
+const ADMIN_USER = process.env.ADMIN_USER || "shadow";
+const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
+
+// Middleware Proteksi Password (HTTP Basic Auth)
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
+    return res.status(401).send('Autentikasi diperlukan. Masukkan Username & Password.');
+  }
+
+  const base64Credentials = authHeader.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+  const [username, password] = credentials.split(':');
+
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    return next();
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
+  return res.status(401).send('Access Denied: Username atau Password salah!');
+};
+
+// ==================== ROUTE ADMIN (DIPROTEKSI) ====================
+
+app.get('/', requireAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="id">
@@ -21,6 +47,13 @@ app.get('/', (req, res) => {
             .header-icon svg { width: 42px; height: 42px; fill: #00ffcc; }
             h2 { color: #00ffcc; text-align: center; margin: 0 0 5px 0; font-size: 20px; }
             p.sub { font-size: 12px; color: #888; text-align: center; margin-bottom: 20px; word-break: break-all; }
+            
+            /* Storage Bar Styling */
+            .storage-container { background: #1a1a1a; padding: 12px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
+            .storage-info { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
+            .storage-bar-bg { width: 100%; background: #222; height: 8px; border-radius: 4px; overflow: hidden; }
+            .storage-bar-fill { width: 0%; background: #00ffcc; height: 100%; transition: width 0.4s ease; }
+
             .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px dashed #333; font-size: 12px; color: #00ffcc; margin-bottom: 20px; text-align: center; }
             label { display: block; margin-bottom: 6px; font-size: 13px; color: #ccc; }
             input { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
@@ -46,8 +79,19 @@ app.get('/', (req, res) => {
                     <svg viewBox="0 0 24 24"><path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
                 </div>
                 <h2>Shadow License Admin</h2>
-                <p class="sub">Terhubung ke Database Neon (PostgreSQL)</p>
+                <p class="sub">🔒 Secure Neon PostgreSQL Storage</p>
                 
+                <!-- Neon Database Storage Progress Bar -->
+                <div class="storage-container">
+                    <div class="storage-info">
+                        <span>Kapasitas Storage Database</span>
+                        <span id="storageStatus">Memuat...</span>
+                    </div>
+                    <div class="storage-bar-bg">
+                        <div id="storageBar" class="storage-bar-fill"></div>
+                    </div>
+                </div>
+
                 <div class="url-box" id="apiUrlBox">Endpoint API: Memuat...</div>
 
                 <form id="formKey">
@@ -100,15 +144,23 @@ app.get('/', (req, res) => {
                     const res = await fetch('/api/admin/list');
                     const data = await res.json();
                     const tbody = document.getElementById('keyList');
+                    
                     if(data.ok && data.licenses.length > 0) {
-                        tbody.innerHTML = data.licenses.map(item => \`
+                        const totalKeys = data.licenses.length;
+                        document.getElementById('storageStatus').innerText = totalKeys + ' / 500 Keys (Aman)';
+                        const percent = Math.min((totalKeys / 500) * 100, 100);
+                        document.getElementById('storageBar').style.width = percent + '%';
+
+                        tbody.innerHTML = data.licenses.map(item => `
                             <tr>
-                                <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
-                                <td>\${item.days_valid || 30} Hari</td>
-                                <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
+                                <td style="font-family: monospace; color: #00ffcc;">${item.license_key}</td>
+                                <td>${item.days_valid || 30} Hari</td>
+                                <td><button class="btn-delete" onclick="deleteKey(${item.id})">Hapus</button></td>
                             </tr>
-                        \`).join('');
+                        `).join('');
                     } else {
+                        document.getElementById('storageStatus').innerText = '0 / 500 Keys (Kosong)';
+                        document.getElementById('storageBar').style.width = '2%';
                         tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
                     }
                 } catch(err) {
@@ -172,28 +224,24 @@ app.get('/', (req, res) => {
   `);
 });
 
-// API Admin: List Key (Dioptimasi agar cepat dan tidak timeout)
-app.get('/api/admin/list', async (req, res) => {
+// API Admin List (Anti-SQL Injection via Parameterized Query)
+app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
-    
-    // Hanya lakukan select sederhana yang cepat
     const licenses = await sql`SELECT id, license_key, days_valid FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
   } catch (err) {
-    // Jika tabel belum ada, kembalikan array kosong agar tidak error 500
     res.json({ ok: true, licenses: [] });
   }
 });
 
-// API Admin: Hapus Key
-app.post('/api/admin/delete', async (req, res) => {
+// API Admin Delete (Anti-SQL Injection)
+app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
-
     if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
 
     await sql`DELETE FROM licenses WHERE id = ${id}`;
@@ -203,8 +251,8 @@ app.post('/api/admin/delete', async (req, res) => {
   }
 });
 
-// API Admin: Simpan Key ke Neon DB
-app.post('/api/admin/create', async (req, res) => {
+// API Admin Create (Anti-SQL Injection dengan Prepared Statements Neon)
+app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
       return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel!" });
@@ -216,7 +264,6 @@ app.post('/api/admin/create', async (req, res) => {
 
     const days = parseInt(days_valid) || 30;
 
-    // Buat tabel otomatis jika belum ada saat pembuatan key
     await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
@@ -228,6 +275,7 @@ app.post('/api/admin/create', async (req, res) => {
       );
     `;
 
+    // Aman dari SQL Injection karena menggunakan parameter binding ${...}
     await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
       VALUES (${license_key}, ${days}, TRUE)
@@ -241,7 +289,8 @@ app.post('/api/admin/create', async (req, res) => {
   }
 });
 
-// API Verifikasi License untuk APK
+// ==================== ROUTE PUBLIC (UNTUK APK / ANTI SQL INJECTION) ====================
+
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
@@ -254,6 +303,7 @@ app.post('/api/license', async (req, res) => {
       return res.json({ ok: false, message: "License key wajib diisi!" });
     }
 
+    // Parameterized query 100% aman dari SQL injection
     const result = await sql`
       SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
     `;
