@@ -101,13 +101,13 @@ app.get('/', (req, res) => {
                     const data = await res.json();
                     const tbody = document.getElementById('keyList');
                     if(data.ok && data.licenses.length > 0) {
-                        tbody.innerHTML = data.licenses.map(item => \`
+                        tbody.innerHTML = data.licenses.map(item => `
                             <tr>
-                                <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
-                                <td>\${item.days_valid} Hari</td>
-                                <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
+                                <td style="font-family: monospace; color: #00ffcc;">${item.license_key}</td>
+                                <td>${item.days_valid} Hari</td>
+                                <td><button class="btn-delete" onclick="deleteKey(${item.id})">Hapus</button></td>
                             </tr>
-                        \`).join('');
+                        `).join('');
                     } else {
                         tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
                     }
@@ -173,7 +173,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// API Admin: Ambil Daftar Key dari Neon DB (Auto-Create Tabel jika belum ada)
+// API Admin: Ambil Daftar Key dari Neon DB (Auto-Migration kolom jika belum ada)
 app.get('/api/admin/list', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -189,6 +189,11 @@ app.get('/api/admin/list', async (req, res) => {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
+    // Pastikan kolom penting ada di database
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
 
     const licenses = await sql`SELECT id, license_key, days_valid, created_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
@@ -239,6 +244,7 @@ app.post('/api/admin/create', async (req, res) => {
 
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);`;
 
     await sql`
