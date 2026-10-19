@@ -550,7 +550,7 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
       DO UPDATE SET days_valid = ${days}, is_active = TRUE, expires_at = ${expiresAt}
     `;
 
-    res.json({ ok: true, message: \`Key berhasil dibuat & disimpan (Masa aktif: \${days} hari)!\` });
+    res.json({ ok: true, message: "Key berhasil dibuat & disimpan (Masa aktif: " + days + " hari)!" });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
   }
