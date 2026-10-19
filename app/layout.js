@@ -1,12 +1,14 @@
 export const metadata = {
   title: 'Shadow License Server',
-  description: 'License Management System',
+  description: 'License Server Management',
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body style={{ background: '#0a0a0a', margin: 0, padding: 0 }}>{children}</body>
+    <html lang="id">
+      <body style={{ margin: 0, padding: 0, backgroundColor: '#0a0a0a' }}>
+        {children}
+      </body>
     </html>
   );
 }

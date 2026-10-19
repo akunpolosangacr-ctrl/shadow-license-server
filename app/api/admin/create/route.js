@@ -15,9 +15,9 @@ export async function POST(request) {
       ON CONFLICT (license_key) DO UPDATE SET days_valid = ${days_valid || 30}, is_active = TRUE
     `;
 
-    return NextResponse.json({ ok: true, message: "Key berhasil dibuat dan masuk ke database Neon!" });
+    return NextResponse.json({ ok: true, message: "Key berhasil dibuat!" });
   } catch (error) {
-    console.error(error);
+    console.error("Error creating license:", error);
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
 }

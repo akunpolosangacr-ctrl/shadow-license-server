@@ -1,4 +1,5 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 
 export default function AdminPage() {
@@ -9,7 +10,9 @@ export default function AdminPage() {
   const [apiBaseUrl, setApiBaseUrl] = useState('');
 
   useEffect(() => {
-    setApiBaseUrl(window.location.origin);
+    if (typeof window !== 'undefined') {
+      setApiBaseUrl(window.location.origin);
+    }
   }, []);
 
   const generateRandomKey = () => {
@@ -37,19 +40,22 @@ export default function AdminPage() {
         setMessage('✅ Sukses! Key tersimpan di database Neon.');
         setKey('');
       } else {
-        setMessage('❌ Gagal: ' + data.message);
+        setMessage('❌ Gagal: ' + (data.message || 'Gagal menyimpan'));
       }
     } catch (err) {
-      setMessage('❌ Terjadi kesalahan jaringan.');
+      setMessage('❌ Terjadi kesalahan koneksi.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main style={{ maxWidth: '600px', margin: '50px auto', fontFamily: 'Arial, sans-serif', padding: '25px', background: '#121212', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-      <h2 style={{ color: '#00ffcc', textAlign: 'center' }}>Shadow License Admin Panel</h2>
-      <p style={{ fontSize: '13px', color: '#aaa', textAlign: 'center' }}>Endpoint URL untuk APK: <code>{apiBaseUrl}/api/license</code></p>
+    <main style={{ maxWidth: '600px', margin: '50px auto', fontFamily: 'sans-serif', padding: '25px', background: '#121212', color: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+      <h2 style={{ color: '#00ffcc', textAlign: 'center', marginTop: 0 }}>Shadow License Admin</h2>
+      <p style={{ fontSize: '13px', color: '#aaa', textAlign: 'center' }}>
+        Endpoint URL APK: <br/>
+        <code style={{ color: '#00ffcc' }}>{apiBaseUrl ? `${apiBaseUrl}/api/license` : 'Loading...'}</code>
+      </p>
       
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px' }}>
         <div>
