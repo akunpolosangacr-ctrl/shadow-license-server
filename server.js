@@ -31,7 +31,7 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access Denied: Username atau Password salah!');
 };
 
-// Inisialisasi & Migrasi Otomatis Tabel Database (Mencegah Error Missing Column)
+// Inisialisasi & Migrasi Otomatis Tabel Database
 async function initDB(sql) {
   await sql`CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY,
@@ -40,17 +40,16 @@ async function initDB(sql) {
     unit VARCHAR(10) DEFAULT 'days',
     max_devices INT DEFAULT 1,
     device_id TEXT DEFAULT '',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NULL
+    created_at BIGINT DEFAULT 0,
+    expires_at BIGINT DEFAULT 0
   );`;
   
-  // Pastikan seluruh kolom aman dan ada jika tabel sudah terlanjur dibuat sebelumnya
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP NULL`; } catch(e){}
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0`; } catch(e){}
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at BIGINT DEFAULT 0`; } catch(e){}
 }
 
 // Halaman Admin Panel
@@ -149,11 +148,7 @@ app.get('/', requireAuth, (req, res) => {
             function updateDurationLabel() {
                 const unit = document.getElementById('duration_unit').value;
                 const label = document.getElementById('durationLabel');
-                if (unit === 'minutes') {
-                    label.innerText = 'Masa Aktif (Menit):';
-                } else {
-                    label.innerText = 'Masa Aktif (Hari):';
-                }
+                label.innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
             }
 
             function generateKey() {
@@ -178,7 +173,6 @@ app.get('/', requireAuth, (req, res) => {
                             const isFull = devices.length >= maxDev;
                             const badgeColor = isFull ? '#ff4d4d' : '#00ffcc';
                             
-                            // Render daftar device ID yang masuk untuk keperluan debug
                             let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span>\`;
                             if (devices.length > 0) {
                                 deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
@@ -286,21 +280,17 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     const durationUnit = unit === 'minutes' ? 'minutes' : 'days';
     const maxDev = parseInt(max_devices) || 1;
 
-    if (durationUnit === 'minutes') {
-      await sql`
-        INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
-        VALUES (${license_key}, ${duration}, ${durationUnit}, ${maxDev}, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 minute'))
-        ON CONFLICT (license_key) DO UPDATE 
-        SET days_valid = ${duration}, unit = ${durationUnit}, max_devices = ${maxDev}, created_at = CURRENT_TIMESTAMP, expires_at = CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 minute')
-      `;
-    } else {
-      await sql`
-        INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
-        VALUES (${license_key}, ${duration}, ${durationUnit}, ${maxDev}, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 day'))
-        ON CONFLICT (license_key) DO UPDATE 
-        SET days_valid = ${duration}, unit = ${durationUnit}, max_devices = ${maxDev}, created_at = CURRENT_TIMESTAMP, expires_at = CURRENT_TIMESTAMP + (${duration} * INTERVAL '1 day')
-      `;
-    }
+    // Kalkulasi Waktu Akurat Menggunakan Unix Timestamp (Detik)
+    const nowSec = Math.floor(Date.now() / 1000);
+    const addedSec = durationUnit === 'minutes' ? (duration * 60) : (duration * 24 * 60 * 60);
+    const expiresSec = nowSec + addedSec;
+
+    await sql`
+      INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
+      VALUES (${license_key}, ${duration}, ${durationUnit}, ${maxDev}, '', ${nowSec}, ${expiresSec})
+      ON CONFLICT (license_key) DO UPDATE 
+      SET days_valid = ${duration}, unit = ${durationUnit}, max_devices = ${maxDev}, created_at = ${nowSec}, expires_at = ${expiresSec}
+    `;
     
     res.json({ ok: true, message: `Key berhasil dibuat (${duration} ${durationUnit === 'minutes' ? 'menit' : 'hari'}, Max ${maxDev} Device)!` });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
@@ -319,31 +309,27 @@ app.post('/api/license', async (req, res) => {
     if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
 
     const record = result[0];
+    const nowSec = Math.floor(Date.now() / 1000);
 
-    // 1. Cek Apakah Key Expired
-    if (record.expires_at) {
-      const nowMs = Date.now();
-      const expiresMs = new Date(record.expires_at).getTime();
-      if (nowMs > expiresMs) {
+    // 1. Cek Expired Menggunakan Perbandingan Angka Timestamp
+    if (record.expires_at && parseInt(record.expires_at) > 0) {
+      const expiresSec = parseInt(record.expires_at);
+      if (nowSec > expiresSec) {
         return res.json({ ok: false, message: "License key sudah kedaluwarsa (expired)!" });
       }
     }
 
-    // 2. Validasi & Binding Device ID (Max Devices Check)
+    // 2. Validasi Device ID
     const clientDevice = device_id || "unknown";
     const maxDevs = record.max_devices || 1;
     let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    if (boundDevices.includes(clientDevice)) {
-      // Device sudah terdaftar sebelumnya, izinkan masuk
-    } else {
+    if (!boundDevices.includes(clientDevice)) {
       if (boundDevices.length < maxDevs) {
-        // Slot masih ada, daftarkan device baru ini
         boundDevices.push(clientDevice);
         const newDeviceStr = boundDevices.join(',');
         await sql`UPDATE licenses SET device_id = ${newDeviceStr} WHERE id = ${record.id}`;
       } else {
-        // Slot penuh dan device berbeda
         return res.json({ 
           ok: false, 
           message: `Slot device penuh! (${boundDevices.length}/${maxDevs} device terdaftar). Reset device di admin panel jika ingin mengganti perangkat.` 
@@ -351,8 +337,7 @@ app.post('/api/license', async (req, res) => {
       }
     }
 
-    const now = Math.floor(Date.now() / 1000);
-    const expiresTimestamp = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (now + 86400);
+    const expiresTimestamp = record.expires_at ? parseInt(record.expires_at) : (nowSec + 86400);
 
     const licenseData = {
       license_id: `CUSTOM-${record.id}`,
@@ -360,7 +345,7 @@ app.post('/api/license', async (req, res) => {
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: clientDevice,
       expires_at: expiresTimestamp,
-      server_time: now,
+      server_time: nowSec,
       session_token: "mock_session_" + Math.random(),
       session_expires_at: expiresTimestamp,
       lib_enabled: true,
