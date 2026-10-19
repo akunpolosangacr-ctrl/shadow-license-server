@@ -33,24 +33,67 @@ const requireAuth = (req, res, next) => {
 };
 
 // Inisialisasi & Migrasi Aman untuk Kolom Database PostgreSQL
+
 async function initDB(sql) {
-  await sql`CREATE TABLE IF NOT EXISTS licenses (
-    id SERIAL PRIMARY KEY,
-    license_key VARCHAR(255) UNIQUE NOT NULL,
-    days_valid INT DEFAULT 30,
-    unit VARCHAR(10) DEFAULT 'days',
-    max_devices INT DEFAULT 1,
-    device_id TEXT DEFAULT '',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP WITH TIME ZONE NULL
-  );`;
-  
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE NULL`; } catch(e){}
+  await sql`
+    CREATE TABLE IF NOT EXISTS licenses (
+      id SERIAL PRIMARY KEY,
+      license_key VARCHAR(255) UNIQUE NOT NULL,
+      days_valid INT DEFAULT 30,
+      unit VARCHAR(10) DEFAULT 'days',
+      max_devices INT DEFAULT 1,
+      device_id TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMPTZ NULL
+    )
+  `;
+
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`;
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`;
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`;
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`;
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`;
+  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`;
+
+  const cols = await sql`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'licenses'
+      AND column_name IN ('created_at', 'expires_at')
+  `;
+
+  for (const col of cols) {
+    const name = col.column_name;
+    if (!['bigint', 'integer', 'smallint'].includes(col.data_type)) continue;
+
+    if (name === 'created_at') {
+      await sql`ALTER TABLE licenses ALTER COLUMN created_at DROP DEFAULT`;
+      await sql`
+        ALTER TABLE licenses
+        ALTER COLUMN created_at TYPE TIMESTAMPTZ
+        USING CASE
+          WHEN created_at IS NULL THEN NULL
+          WHEN created_at > 100000000000
+            THEN to_timestamp(created_at::double precision / 1000.0)
+          ELSE to_timestamp(created_at::double precision)
+        END
+      `;
+      await sql`ALTER TABLE licenses ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP`;
+    } else {
+      await sql`ALTER TABLE licenses ALTER COLUMN expires_at DROP DEFAULT`;
+      await sql`
+        ALTER TABLE licenses
+        ALTER COLUMN expires_at TYPE TIMESTAMPTZ
+        USING CASE
+          WHEN expires_at IS NULL THEN NULL
+          WHEN expires_at > 100000000000
+            THEN to_timestamp(expires_at::double precision / 1000.0)
+          ELSE to_timestamp(expires_at::double precision)
+        END
+      `;
+    }
+  }
 }
 
 // GET / (Admin Panel Interface)
@@ -315,7 +358,7 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
 
     await sql`
       INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
-      VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now}, ${expiresAt})
+      VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})
     `;
     
     res.json({ ok: true, message: `Key berhasil dibuat (${duration} ${durationUnit === 'minutes' ? 'menit' : 'hari'}, Max ${maxDev} Device)!` });
