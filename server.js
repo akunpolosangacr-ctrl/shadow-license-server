@@ -4,25 +4,34 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
-// Kredensial Admin Sesuai Permintaan
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
-// Middleware Proteksi Password (HTTP Basic Auth)
+// Middleware Proteksi Password yang Aman dari Crash (Anti-Error 500)
 const requireAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
-    return res.status(401).send('Autentikasi diperlukan. Masukkan Username & Password.');
-  }
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
+      return res.status(401).send('Autentikasi diperlukan.');
+    }
 
-  const base64Credentials = authHeader.split(' ')[1];
-  const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-  const [username, password] = credentials.split(':');
+    const parts = authHeader.split(' ');
+    if (parts.length < 2) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
+      return res.status(401).send('Format autentikasi salah.');
+    }
 
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
-    return next();
+    const base64Credentials = parts[1];
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+    const [username, password] = credentials.split(':');
+
+    if (username === ADMIN_USER && password === ADMIN_PASS) {
+      return next();
+    }
+  } catch (err) {
+    // Tangkap error decoding agar tidak bikin server crash (500)
   }
 
   res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
@@ -81,7 +90,6 @@ app.get('/', requireAuth, (req, res) => {
                 <h2>Shadow License Admin</h2>
                 <p class="sub">🔒 Secure Neon PostgreSQL Storage</p>
                 
-                <!-- Neon Database Storage Progress Bar -->
                 <div class="storage-container">
                     <div class="storage-info">
                         <span>Kapasitas Storage Database</span>
@@ -224,11 +232,23 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// API Admin List (Anti-SQL Injection via Parameterized Query)
+// API Admin List (Auto-create table jika belum ada agar terhindar dari error 500)
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
+    
+    await sql`
+      CREATE TABLE IF NOT EXISTS licenses (
+          id SERIAL PRIMARY KEY,
+          license_key VARCHAR(255) UNIQUE NOT NULL,
+          days_valid INT DEFAULT 30,
+          device_id VARCHAR(255),
+          is_active BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
     const licenses = await sql`SELECT id, license_key, days_valid FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
   } catch (err) {
@@ -236,7 +256,7 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
   }
 });
 
-// API Admin Delete (Anti-SQL Injection)
+// API Admin Delete
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -251,7 +271,7 @@ app.post('/api/admin/delete', requireAuth, async (req, res) => {
   }
 });
 
-// API Admin Create (Anti-SQL Injection dengan Prepared Statements Neon)
+// API Admin Create
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
@@ -275,7 +295,6 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
       );
     `;
 
-    // Aman dari SQL Injection karena menggunakan parameter binding ${...}
     await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
       VALUES (${license_key}, ${days}, TRUE)
@@ -289,7 +308,7 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   }
 });
 
-// ==================== ROUTE PUBLIC (UNTUK APK / ANTI SQL INJECTION) ====================
+// ==================== ROUTE PUBLIC (UNTUK APK) ====================
 
 app.post('/api/license', async (req, res) => {
   try {
@@ -303,7 +322,6 @@ app.post('/api/license', async (req, res) => {
       return res.json({ ok: false, message: "License key wajib diisi!" });
     }
 
-    // Parameterized query 100% aman dari SQL injection
     const result = await sql`
       SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
     `;
