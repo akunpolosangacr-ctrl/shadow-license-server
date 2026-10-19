@@ -4,10 +4,8 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
-const sql = neon(process.env.DATABASE_URL);
-
-// Halaman Utama Admin (HTML untuk Create Custom Key & Atur Masa Aktif/Days)
-app.get('/', async (req, res) => {
+// Halaman Utama Admin (HTML untuk Create Key & Atur Masa Aktif/Days)
+app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="id">
@@ -91,13 +89,17 @@ app.get('/', async (req, res) => {
 // API Admin: Simpan Key ke Neon DB
 app.post('/api/admin/create', async (req, res) => {
   try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel Environment Variables!" });
+    }
+    const sql = neon(process.env.DATABASE_URL);
     const { license_key, days_valid } = req.body;
+    
     if (!license_key) return res.status(400).json({ ok: false, message: "Key wajib diisi!" });
 
     const days = parseInt(days_valid) || 30;
 
-    // Otomatis buat tabel jika belum ada
-    await sql\`
+    await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
           license_key VARCHAR(255) UNIQUE NOT NULL,
@@ -106,16 +108,16 @@ app.post('/api/admin/create', async (req, res) => {
           is_active BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-    \`;
+    `;
 
-    await sql\`
+    await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
-      VALUES (\${license_key}, \${days}, TRUE)
+      VALUES (${license_key}, ${days}, TRUE)
       ON CONFLICT (license_key) 
-      DO UPDATE SET days_valid = \${days}, is_active = TRUE
-    \`;
+      DO UPDATE SET days_valid = ${days}, is_active = TRUE
+    `;
 
-    res.json({ ok: true, message: \`Key berhasil dibuat (Masa aktif: \${days} hari)!\` });
+    res.json({ ok: true, message: `Key berhasil dibuat (Masa aktif: ${days} hari)!` });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
   }
@@ -124,12 +126,20 @@ app.post('/api/admin/create', async (req, res) => {
 // API Verifikasi License untuk APK
 app.post('/api/license', async (req, res) => {
   try {
-    const { license_key, device_id } = req.body;
-    if (!license_key) return res.json({ ok: false, message: "License key wajib diisi!" });
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    }
+    const sql = neon(process.env.DATABASE_URL);
+    const body = req.body;
+    const { license_key, device_id } = body;
 
-    const result = await sql\`
-      SELECT * FROM licenses WHERE license_key = \${license_key} AND is_active = TRUE
-    \`;
+    if (!license_key) {
+      return res.json({ ok: false, message: "License key wajib diisi!" });
+    }
+
+    const result = await sql`
+      SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
+    `;
 
     if (result.length === 0) {
       return res.json({ ok: false, message: "Key tidak valid atau sudah tidak aktif!" });
@@ -142,8 +152,8 @@ app.post('/api/license', async (req, res) => {
     const expiresAt = now + (daysValid * 24 * 60 * 60);
 
     const licenseData = {
-      license_id: \`CUSTOM-\${licenseRecord.id}\`,
-      plan: \`VIP \${daysValid} HARI\`,
+      license_id: `CUSTOM-${licenseRecord.id}`,
+      plan: `VIP ${daysValid} HARI`,
       product: {
         code: "rio-rise",
         name: "Shadow Rio Rise",
@@ -167,8 +177,8 @@ app.post('/api/license', async (req, res) => {
 
     const jsonStr = JSON.stringify(licenseData);
     const base64Data = Buffer.from(jsonStr).toString('base64')
-        .replace(/\\+/g, '-')
-        .replace(/\\//g, '_')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
         .replace(/=+$/, '');
 
     res.json({
@@ -178,7 +188,7 @@ app.post('/api/license', async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ ok: false, message: "Server Error" });
+    res.status(500).json({ ok: false, message: "Server Error: " + err.message });
   }
 });
 
