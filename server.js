@@ -4,7 +4,7 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
-// Halaman Utama Admin (HTML lengkap dengan Icon Database Neon & URL API di dalam web)
+// Halaman Utama Admin (HTML lengkap dengan Form Create dan Tabel List Key)
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -14,8 +14,9 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Shadow License Admin Panel</title>
         <style>
-            body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-            .card { background: #121212; padding: 25px; border-radius: 14px; box-shadow: 0 4px 25px rgba(0,255,204,0.15); width: 100%; max-width: 450px; border: 1px solid #222; box-sizing: border-box; }
+            body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+            .container { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 20px; }
+            .card { background: #121212; padding: 25px; border-radius: 14px; box-shadow: 0 4px 25px rgba(0,255,204,0.15); border: 1px solid #222; box-sizing: border-box; }
             .header-icon { text-align: center; margin-bottom: 10px; }
             .header-icon svg { width: 42px; height: 42px; fill: #00ffcc; }
             h2 { color: #00ffcc; text-align: center; margin: 0 0 5px 0; font-size: 20px; }
@@ -29,33 +30,60 @@ app.get('/', (req, res) => {
             .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
             .btn-random:hover { background: #444; }
             #msg { margin-top: 15px; text-align: center; font-size: 13px; }
+            
+            /* Table Styling */
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #222; }
+            th { color: #00ffcc; }
+            .btn-delete { background: #ff4d4d; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+            .btn-delete:hover { background: #cc0000; }
         </style>
     </head>
     <body>
-        <div class="card">
-            <div class="header-icon">
-                <!-- Neon Database Storage Icon -->
-                <svg viewBox="0 0 24 24"><path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
-            </div>
-            <h2>Shadow License Admin</h2>
-            <p class="sub">Terhubung ke Database Neon (PostgreSQL)</p>
-            
-            <div class="url-box" id="apiUrlBox">Endpoint API: Memuat...</div>
-
-            <form id="formKey">
-                <label>Custom License Key:</label>
-                <div class="row">
-                    <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required style="margin-bottom:0;">
-                    <button type="button" class="btn-random" onclick="generateKey()">Random</button>
+        <div class="container">
+            <div class="card">
+                <div class="header-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
                 </div>
+                <h2>Shadow License Admin</h2>
+                <p class="sub">Terhubung ke Database Neon (PostgreSQL)</p>
                 
-                <label>Masa Aktif (Hari / Days):</label>
-                <input type="number" id="days_valid" value="30" required>
-                
-                <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
-            </form>
-            <div id="msg"></div>
+                <div class="url-box" id="apiUrlBox">Endpoint API: Memuat...</div>
+
+                <form id="formKey">
+                    <label>Custom License Key:</label>
+                    <div class="row">
+                        <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required style="margin-bottom:0;">
+                        <button type="button" class="btn-random" onclick="generateKey()">Random</button>
+                    </div>
+                    
+                    <label>Masa Aktif (Hari / Days):</label>
+                    <input type="number" id="days_valid" value="30" required>
+                    
+                    <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
+                </form>
+                <div id="msg"></div>
+            </div>
+
+            <div class="card">
+                <h3 style="color: #00ffcc; margin-top: 0; font-size: 16px; text-align: center;">Daftar Key yang Telah Dibuat</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Masa Aktif</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keyList">
+                            <tr><td colspan="3" style="text-align: center; color: #888;">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
         <script>
             const fullUrl = window.location.origin + '/api/license';
             document.getElementById('apiUrlBox').innerText = 'API URL: ' + fullUrl;
@@ -65,6 +93,46 @@ app.get('/', (req, res) => {
                 let res = 'RIO-';
                 for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
                 document.getElementById('license_key').value = res;
+            }
+
+            async function loadKeys() {
+                try {
+                    const res = await fetch('/api/admin/list');
+                    const data = await res.json();
+                    const tbody = document.getElementById('keyList');
+                    if(data.ok && data.licenses.length > 0) {
+                        tbody.innerHTML = data.licenses.map(item => \`
+                            <tr>
+                                <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
+                                <td>\${item.days_valid} Hari</td>
+                                <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
+                            </tr>
+                        \`).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
+                    }
+                } catch(err) {
+                    console.error(err);
+                }
+            }
+
+            async function deleteKey(id) {
+                if(!confirm('Yakin ingin menghapus key ini?')) return;
+                try {
+                    const res = await fetch('/api/admin/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id })
+                    });
+                    const data = await res.json();
+                    if(data.ok) {
+                        loadKeys();
+                    } else {
+                        alert('Gagal menghapus: ' + data.message);
+                    }
+                } catch(err) {
+                    alert('Terjadi kesalahan jaringan.');
+                }
             }
 
             document.getElementById('formKey').addEventListener('submit', async (e) => {
@@ -86,6 +154,7 @@ app.get('/', (req, res) => {
                         msg.style.color = '#00ffcc';
                         msg.innerText = '✅ ' + data.message;
                         document.getElementById('license_key').value = '';
+                        loadKeys(); // Refresh list key
                     } else {
                         msg.style.color = '#ff4d4d';
                         msg.innerText = '❌ ' + data.message;
@@ -95,10 +164,42 @@ app.get('/', (req, res) => {
                     msg.innerText = '❌ Gagal terhubung ke server.';
                 }
             });
+
+            // Load keys saat halaman dibuka
+            loadKeys();
         </script>
     </body>
     </html>
   `);
+});
+
+// API Admin: Ambil Daftar Key dari Neon DB
+app.get('/api/admin/list', async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    
+    const licenses = await sql\`SELECT id, license_key, days_valid, created_at FROM licenses ORDER BY id DESC\`;
+    res.json({ ok: true, licenses });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// API Admin: Hapus Key dari Neon DB
+app.post('/api/admin/delete', async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    const { id } = req.body;
+
+    if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
+
+    await sql\`DELETE FROM licenses WHERE id = \${id}\`;
+    res.json({ ok: true, message: "Key berhasil dihapus!" });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
 // API Admin: Simpan Key ke Neon DB dengan Auto-Migration Kolom Tabel
@@ -114,8 +215,7 @@ app.post('/api/admin/create', async (req, res) => {
 
     const days = parseInt(days_valid) || 30;
 
-    // 1. Buat tabel jika belum ada sama sekali
-    await sql`
+    await sql\`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
           license_key VARCHAR(255) UNIQUE NOT NULL,
@@ -124,22 +224,20 @@ app.post('/api/admin/create', async (req, res) => {
           is_active BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-    `;
+    \`;
 
-    // 2. Auto-patch kolom jika tabel sudah ada sebelumnya tapi kurang lengkap
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);`;
+    await sql\`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;\`;
+    await sql\`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;\`;
+    await sql\`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);\`;
 
-    // 3. Insert atau Update Key ke Database Neon
-    await sql`
+    await sql\`
       INSERT INTO licenses (license_key, days_valid, is_active)
-      VALUES (${license_key}, ${days}, TRUE)
+      VALUES (\${license_key}, \${days}, TRUE)
       ON CONFLICT (license_key) 
-      DO UPDATE SET days_valid = ${days}, is_active = TRUE
-    `;
+      DO UPDATE SET days_valid = \${days}, is_active = TRUE
+    \`;
 
-    res.json({ ok: true, message: `Key berhasil dibuat & disimpan (Masa aktif: ${days} hari)!` });
+    res.json({ ok: true, message: \`Key berhasil dibuat & disimpan (Masa aktif: \${days} hari)!\` });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
   }
@@ -158,9 +256,9 @@ app.post('/api/license', async (req, res) => {
       return res.json({ ok: false, message: "License key wajib diisi!" });
     }
 
-    const result = await sql`
-      SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
-    `;
+    const result = await sql\`
+      SELECT * FROM licenses WHERE license_key = \${license_key} AND is_active = TRUE
+    \`;
 
     if (result.length === 0) {
       return res.json({ ok: false, message: "Key tidak valid atau sudah tidak aktif!" });
@@ -173,8 +271,8 @@ app.post('/api/license', async (req, res) => {
     const expiresAt = now + (daysValid * 24 * 60 * 60);
 
     const licenseData = {
-      license_id: `CUSTOM-${licenseRecord.id}`,
-      plan: `VIP ${daysValid} HARI`,
+      license_id: \`CUSTOM-\${licenseRecord.id}\`,
+      plan: \`VIP \${daysValid} HARI\`,
       product: {
         code: "rio-rise",
         name: "Shadow Rio Rise",
@@ -198,8 +296,8 @@ app.post('/api/license', async (req, res) => {
 
     const jsonStr = JSON.stringify(licenseData);
     const base64Data = Buffer.from(jsonStr).toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
+        .replace(/\\+/g, '-')
+        .replace(/\\//g, '_')
         .replace(/=+$/, '');
 
     res.json({
