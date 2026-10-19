@@ -7,7 +7,6 @@ app.use(express.json());
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
-// Middleware Proteksi Password yang Aman dari Crash (Anti-Error 500)
 const requireAuth = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -30,9 +29,7 @@ const requireAuth = (req, res, next) => {
     if (username === ADMIN_USER && password === ADMIN_PASS) {
       return next();
     }
-  } catch (err) {
-    // Tangkap error decoding agar tidak bikin server crash (500)
-  }
+  } catch (err) {}
 
   res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin Protected Area"');
   return res.status(401).send('Access Denied: Username atau Password salah!');
@@ -232,7 +229,6 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// API Admin List (Auto-create table jika belum ada agar terhindar dari error 500)
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -256,7 +252,6 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
   }
 });
 
-// API Admin Delete
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -271,7 +266,6 @@ app.post('/api/admin/delete', requireAuth, async (req, res) => {
   }
 });
 
-// API Admin Create
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
@@ -307,8 +301,6 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     res.status(500).json({ ok: false, message: err.message });
   }
 });
-
-// ==================== ROUTE PUBLIC (UNTUK APK) ====================
 
 app.post('/api/license', async (req, res) => {
   try {
@@ -377,5 +369,5 @@ app.post('/api/license', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Server running on port ' + PORT));
+// 2. Pastikan vercel.json terhubung dengan benar ke server.js
+module.exports = app;
