@@ -1,7 +1,7 @@
 {
   "name": "shadow-license-server",
   "version": "1.0.0",
-  "private": true,
+  "description": "Shadow License Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
