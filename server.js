@@ -101,13 +101,13 @@ app.get('/', (req, res) => {
                     const data = await res.json();
                     const tbody = document.getElementById('keyList');
                     if(data.ok && data.licenses.length > 0) {
-                        tbody.innerHTML = data.licenses.map(item => `
+                        tbody.innerHTML = data.licenses.map(item => \`
                             <tr>
-                                <td style="font-family: monospace; color: #00ffcc;">${item.license_key}</td>
-                                <td>${item.days_valid} Hari</td>
-                                <td><button class="btn-delete" onclick="deleteKey(${item.id})">Hapus</button></td>
+                                <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
+                                <td>\${item.days_valid || 30} Hari</td>
+                                <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
                             </tr>
-                        `).join('');
+                        \`).join('');
                     } else {
                         tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
                     }
@@ -154,7 +154,7 @@ app.get('/', (req, res) => {
                         msg.style.color = '#00ffcc';
                         msg.innerText = '✅ ' + data.message;
                         document.getElementById('license_key').value = '';
-                        loadKeys(); // Refresh list key
+                        loadKeys();
                     } else {
                         msg.style.color = '#ff4d4d';
                         msg.innerText = '❌ ' + data.message;
@@ -165,7 +165,6 @@ app.get('/', (req, res) => {
                 }
             });
 
-            // Load keys saat halaman dibuka
             loadKeys();
         </script>
     </body>
@@ -173,36 +172,22 @@ app.get('/', (req, res) => {
   `);
 });
 
-// API Admin: Ambil Daftar Key dari Neon DB (Auto-Migration kolom jika belum ada)
+// API Admin: List Key (Dioptimasi agar cepat dan tidak timeout)
 app.get('/api/admin/list', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     
-    await sql`
-      CREATE TABLE IF NOT EXISTS licenses (
-          id SERIAL PRIMARY KEY,
-          license_key VARCHAR(255) UNIQUE NOT NULL,
-          days_valid INT DEFAULT 30,
-          device_id VARCHAR(255),
-          is_active BOOLEAN DEFAULT TRUE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-
-    // Pastikan kolom penting ada di database
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
-
-    const licenses = await sql`SELECT id, license_key, days_valid, created_at FROM licenses ORDER BY id DESC`;
+    // Hanya lakukan select sederhana yang cepat
+    const licenses = await sql`SELECT id, license_key, days_valid FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
   } catch (err) {
-    res.status(500).json({ ok: false, message: err.message });
+    // Jika tabel belum ada, kembalikan array kosong agar tidak error 500
+    res.json({ ok: true, licenses: [] });
   }
 });
 
-// API Admin: Hapus Key dari Neon DB
+// API Admin: Hapus Key
 app.post('/api/admin/delete', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -222,7 +207,7 @@ app.post('/api/admin/delete', async (req, res) => {
 app.post('/api/admin/create', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
-      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Environment Variables Vercel!" });
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel!" });
     }
     const sql = neon(process.env.DATABASE_URL);
     const { license_key, days_valid } = req.body;
@@ -231,6 +216,7 @@ app.post('/api/admin/create', async (req, res) => {
 
     const days = parseInt(days_valid) || 30;
 
+    // Buat tabel otomatis jika belum ada saat pembuatan key
     await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
@@ -241,11 +227,6 @@ app.post('/api/admin/create', async (req, res) => {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
-
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
-    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);`;
 
     await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
