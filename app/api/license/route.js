@@ -10,6 +10,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, message: "License key wajib diisi!" }, { status: 400 });
     }
 
+    // Cek key di database Neon
     const result = await sql`
       SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
     `;
@@ -43,11 +44,12 @@ export async function POST(request) {
         sha256: "b54be9ef4af47ac9c901e83885ae67705bb7a4ec1d64c5a70adc15c86754ff50",
         size: 779152,
         min_app_version: "2.0.8",
-        url: "https://shadowcheat.com/api/v1/library.php?version=2.0.42"
+        url: "https://shadowcheat.com/api/v1/library.php?version=2.0.8"
       },
       min_app_version: "2.0.8"
     };
 
+    // Encode Base64 URL Safe (buang padding '=')
     const jsonStr = JSON.stringify(licenseData);
     const base64Data = Buffer.from(jsonStr).toString('base64')
         .replace(/\+/g, '-')
