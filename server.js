@@ -52,11 +52,11 @@ app.get('/', requireAuth, (req, res) => {
             .storage-bar-fill { width: 0%; background: #00ffcc; height: 100%; transition: width 0.4s ease; }
             .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px dashed #333; font-size: 12px; color: #00ffcc; margin-bottom: 20px; text-align: center; }
             label { display: block; margin-bottom: 6px; font-size: 13px; color: #ccc; }
-            input { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
+            input, select { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
             .row { display: flex; gap: 10px; }
             button.submit-btn { width: 100%; padding: 13px; background: #00ffcc; color: #000; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
             button.submit-btn:hover { background: #00cca3; }
-            .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
+            .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; height: 45px; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
             th, td { padding: 10px; text-align: left; border-bottom: 1px solid #222; }
             th { color: #00ffcc; }
@@ -67,7 +67,7 @@ app.get('/', requireAuth, (req, res) => {
         <div class="container">
             <div class="card">
                 <h2>Shadow License Admin</h2>
-                <p class="sub">🔒 Secure Neon PostgreSQL Storage</p>
+                <p class="sub">🔒 Secure Neon PostgreSQL Storage (Accurate Expiry)</p>
                 <div class="storage-container">
                     <div class="storage-info">
                         <span>Kapasitas Storage Database</span>
@@ -84,8 +84,26 @@ app.get('/', requireAuth, (req, res) => {
                         <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required style="margin-bottom:0;">
                         <button type="button" class="btn-random" onclick="generateKey()">Random</button>
                     </div>
-                    <label>Masa Aktif (Hari / Days):</label>
-                    <input type="number" id="days_valid" value="30" required>
+
+                    <label>Masa Aktif / Durasi:</label>
+                    <select id="duration_preset" onchange="onPresetChange()">
+                        <option value="1_minute">⚡ 1 Menit (Test Expired)</option>
+                        <option value="1_hour">1 Jam</option>
+                        <option value="1_day">1 Hari</option>
+                        <option value="7_days">7 Hari</option>
+                        <option value="30_days" selected>30 Hari (Default)</option>
+                        <option value="custom">Custom (Atur Manual)</option>
+                    </select>
+
+                    <div id="customDurationBox" style="display: none; gap: 10px;">
+                        <input type="number" id="duration_value" value="30" placeholder="Nilai" style="flex: 2;">
+                        <select id="duration_unit" style="flex: 1;">
+                            <option value="minutes">Menit</option>
+                            <option value="hours">Jam</option>
+                            <option value="days" selected>Hari</option>
+                        </select>
+                    </div>
+
                     <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
                 </form>
                 <div id="msg"></div>
@@ -94,7 +112,7 @@ app.get('/', requireAuth, (req, res) => {
                 <h3 style="color: #00ffcc; margin-top: 0; font-size: 16px; text-align: center;">Daftar Key yang Telah Dibuat</h3>
                 <table>
                     <thead>
-                        <tr><th>Key</th><th>Masa Aktif</th><th>Aksi</th></tr>
+                        <tr><th>Key</th><th>Durasi</th><th>Aksi</th></tr>
                     </thead>
                     <tbody id="keyList">
                         <tr><td colspan="3" style="text-align: center; color: #888;">Memuat data...</td></tr>
@@ -104,12 +122,24 @@ app.get('/', requireAuth, (req, res) => {
         </div>
         <script>
             document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+            
             function generateKey() {
                 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                 let res = 'RIO-';
                 for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
                 document.getElementById('license_key').value = res;
             }
+
+            function onPresetChange() {
+                const preset = document.getElementById('duration_preset').value;
+                const customBox = document.getElementById('customDurationBox');
+                if (preset === 'custom') {
+                    customBox.style.display = 'flex';
+                } else {
+                    customBox.style.display = 'none';
+                }
+            }
+
             async function loadKeys() {
                 try {
                     const res = await fetch('/api/admin/list');
@@ -121,7 +151,7 @@ app.get('/', requireAuth, (req, res) => {
                         tbody.innerHTML = data.licenses.map(item => \`
                             <tr>
                                 <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
-                                <td>\${item.days_valid || 30} Hari</td>
+                                <td>\${item.duration_value} \${item.duration_unit === 'minutes' ? 'Menit' : item.duration_unit === 'hours' ? 'Jam' : 'Hari'}</td>
                                 <td><button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button></td>
                             </tr>
                         \`).join('');
@@ -132,23 +162,57 @@ app.get('/', requireAuth, (req, res) => {
                     }
                 } catch(err) { console.error(err); }
             }
+
             async function deleteKey(id) {
                 if(!confirm('Yakin ingin menghapus key ini?')) return;
                 const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
                 const data = await res.json();
                 if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
             }
+
             document.getElementById('formKey').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const key = document.getElementById('license_key').value;
-                const days = document.getElementById('days_valid').value;
+                const preset = document.getElementById('duration_preset').value;
+                
+                let val = 30;
+                let unit = 'days';
+
+                if (preset === '1_minute') {
+                    val = 1; unit = 'minutes';
+                } else if (preset === '1_hour') {
+                    val = 1; unit = 'hours';
+                } else if (preset === '1_day') {
+                    val = 1; unit = 'days';
+                } else if (preset === '7_days') {
+                    val = 7; unit = 'days';
+                } else if (preset === '30_days') {
+                    val = 30; unit = 'days';
+                } else {
+                    val = parseInt(document.getElementById('duration_value').value) || 30;
+                    unit = document.getElementById('duration_unit').value;
+                }
+
                 const msg = document.getElementById('msg');
                 msg.style.color = '#ccc'; msg.innerText = 'Menyimpan...';
-                const res = await fetch('/api/admin/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ license_key: key, days_valid: days }) });
+                
+                const res = await fetch('/api/admin/create', { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ license_key: key, duration_value: val, duration_unit: unit }) 
+                });
                 const data = await res.json();
-                if(data.ok) { msg.style.color = '#00ffcc'; msg.innerText = '✅ ' + data.message; document.getElementById('license_key').value = ''; loadKeys(); }
-                else { msg.style.color = '#ff4d4d'; msg.innerText = '❌ ' + data.message; }
+                if(data.ok) { 
+                    msg.style.color = '#00ffcc'; 
+                    msg.innerText = '✅ ' + data.message; 
+                    document.getElementById('license_key').value = ''; 
+                    loadKeys(); 
+                } else { 
+                    msg.style.color = '#ff4d4d'; 
+                    msg.innerText = '❌ ' + data.message; 
+                }
             });
+
             loadKeys();
         </script>
     </body>
@@ -156,13 +220,26 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
+// Helper function to ensure table has the correct columns
+async function ensureTable(sql) {
+  await sql\`CREATE TABLE IF NOT EXISTS licenses (
+    id SERIAL PRIMARY KEY, 
+    license_key VARCHAR(255) UNIQUE NOT NULL, 
+    duration_value INT DEFAULT 30, 
+    duration_unit VARCHAR(20) DEFAULT 'days', 
+    device_id VARCHAR(255), 
+    is_active BOOLEAN DEFAULT TRUE, 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );\`;
+}
+
 // API Routes
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.json({ ok: true, licenses: [] });
     const sql = neon(process.env.DATABASE_URL);
-    await sql`CREATE TABLE IF NOT EXISTS licenses (id SERIAL PRIMARY KEY, license_key VARCHAR(255) UNIQUE NOT NULL, days_valid INT DEFAULT 30, device_id VARCHAR(255), is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`;
-    const licenses = await sql`SELECT id, license_key, days_valid FROM licenses ORDER BY id DESC`;
+    await ensureTable(sql);
+    const licenses = await sql\`SELECT id, license_key, duration_value, duration_unit, created_at FROM licenses ORDER BY id DESC\`;
     res.json({ ok: true, licenses });
   } catch (err) { res.json({ ok: true, licenses: [] }); }
 });
@@ -172,7 +249,7 @@ app.post('/api/admin/delete', requireAuth, async (req, res) => {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
-    await sql`DELETE FROM licenses WHERE id = ${id}`;
+    await sql\`DELETE FROM licenses WHERE id = \${id}\`;
     res.json({ ok: true, message: "Key berhasil dihapus!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
@@ -181,14 +258,21 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
-    const { license_key, days_valid } = req.body;
+    const { license_key, duration_value, duration_unit } = req.body;
     if (!license_key) return res.status(400).json({ ok: false, message: "Key wajib diisi!" });
-    const days = parseInt(days_valid) || 30;
-
-    await sql`CREATE TABLE IF NOT EXISTS licenses (id SERIAL PRIMARY KEY, license_key VARCHAR(255) UNIQUE NOT NULL, days_valid INT DEFAULT 30, device_id VARCHAR(255), is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`;
-    await sql`INSERT INTO licenses (license_key, days_valid, is_active) VALUES (${license_key}, ${days}, TRUE) ON CONFLICT (license_key) DO UPDATE SET days_valid = ${days}, is_active = TRUE`;
     
-    res.json({ ok: true, message: `Key berhasil dibuat (Masa aktif: ${days} hari)!` });
+    const val = parseInt(duration_value) || 30;
+    const unit = duration_unit || 'days';
+
+    await ensureTable(sql);
+    
+    // Insert or update with fresh created_at timestamp
+    await sql\`INSERT INTO licenses (license_key, duration_value, duration_unit, is_active) 
+              VALUES (\${license_key}, \${val}, \${unit}, TRUE) 
+              ON CONFLICT (license_key) 
+              DO UPDATE SET duration_value = \${val}, duration_unit = \${unit}, is_active = TRUE, created_at = CURRENT_TIMESTAMP\`;
+    
+    res.json({ ok: true, message: \`Key berhasil dibuat (\${val} \${unit === 'minutes' ? 'Menit' : unit === 'hours' ? 'Jam' : 'Hari'})!\` });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
@@ -199,17 +283,39 @@ app.post('/api/license', async (req, res) => {
     const { license_key, device_id } = req.body;
     if (!license_key) return res.json({ ok: false, message: "License key wajib diisi!" });
 
-    const result = await sql`SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE`;
-    if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
+    const result = await sql\`SELECT * FROM licenses WHERE license_key = \${license_key} AND is_active = TRUE\`;
+    if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid atau sudah tidak aktif!" });
 
     const record = result[0];
-    const daysValid = record.days_valid || 30;
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = now + (daysValid * 24 * 60 * 60);
+    const val = record.duration_value || 30;
+    const unit = record.duration_unit || 'days';
+
+    // Akurat: Hitung expiration timestamp berdasarkan created_at di Database + durasi
+    const createdAtTime = new Date(record.created_at).getTime();
+    let durationMs = val * 24 * 60 * 60 * 1000; // default hari
+
+    if (unit === 'minutes') {
+      durationMs = val * 60 * 1000;
+    } else if (unit === 'hours') {
+      durationMs = val * 60 * 60 * 1000;
+    } else if (unit === 'days') {
+      durationMs = val * 24 * 60 * 60 * 1000;
+    }
+
+    const expiresAtMs = createdAtTime + durationMs;
+    const nowMs = Date.now();
+
+    // Cek apakah sudah melewati waktu expired
+    if (nowMs > expiresAtMs) {
+      return res.json({ ok: false, message: "License key sudah expired (kedaluwarsa)!" });
+    }
+
+    const expiresAt = Math.floor(expiresAtMs / 1000);
+    const now = Math.floor(nowMs / 1000);
 
     const licenseData = {
-      license_id: `CUSTOM-${record.id}`,
-      plan: `VIP ${daysValid} HARI`,
+      license_id: \`CUSTOM-\${record.id}\`,
+      plan: \`VIP \${val} \${unit.toUpperCase()}\`,
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: device_id || record.device_id || "unknown",
       expires_at: expiresAt,
@@ -227,7 +333,7 @@ app.post('/api/license', async (req, res) => {
       min_app_version: "2.0.8"
     };
 
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
     res.json({ ok: true, data: base64Data, signature: "dummy_signature" });
   } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
 });
