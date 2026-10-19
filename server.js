@@ -90,7 +90,7 @@ app.get('/', (req, res) => {
 app.post('/api/admin/create', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
-      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel Environment Variables!" });
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel!" });
     }
     const sql = neon(process.env.DATABASE_URL);
     const { license_key, days_valid } = req.body;
@@ -99,6 +99,7 @@ app.post('/api/admin/create', async (req, res) => {
 
     const days = parseInt(days_valid) || 30;
 
+    // Buat tabel jika belum ada
     await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
@@ -108,6 +109,11 @@ app.post('/api/admin/create', async (req, res) => {
           is_active BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `;
+
+    // Pastikan kolom days_valid ada (jika tabel sudah terlanjur dibuat sebelumnya)
+    await sql`
+      ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30;
     `;
 
     await sql`
