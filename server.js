@@ -31,7 +31,7 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access Denied: Username atau Password salah!');
 };
 
-// Inisialisasi Tabel Database Aman
+// Inisialisasi & Migrasi Otomatis Tabel Database (Mencegah Error Missing Column)
 async function initDB(sql) {
   await sql`CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY,
@@ -43,9 +43,13 @@ async function initDB(sql) {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL
   );`;
+  
+  // Pastikan seluruh kolom aman dan ada jika tabel sudah terlanjur dibuat sebelumnya
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`; } catch(e){}
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP NULL`; } catch(e){}
 }
 
@@ -60,7 +64,7 @@ app.get('/', requireAuth, (req, res) => {
         <title>Shadow License Admin Panel</title>
         <style>
             body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-            .container { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 20px; }
+            .container { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
             .card { background: #121212; padding: 25px; border-radius: 14px; box-shadow: 0 4px 25px rgba(0,255,204,0.15); border: 1px solid #222; box-sizing: border-box; }
             h2 { color: #00ffcc; text-align: center; margin: 0 0 5px 0; font-size: 20px; }
             p.sub { font-size: 12px; color: #888; text-align: center; margin-bottom: 20px; word-break: break-all; }
@@ -78,11 +82,12 @@ app.get('/', requireAuth, (req, res) => {
             button.submit-btn:hover { background: #00cca3; }
             .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #222; }
+            th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #222; vertical-align: top; }
             th { color: #00ffcc; }
             .btn-delete { background: #ff4d4d; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
-            .btn-reset { background: #ffa500; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; margin-right: 5px; }
-            .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #222; color: #00ffcc; }
+            .btn-reset { background: #ffa500; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; margin-bottom: 4px; }
+            .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #222; color: #00ffcc; margin-bottom: 5px; }
+            .device-debug { font-size: 11px; color: #00ffcc; font-family: monospace; background: #1a1a1a; padding: 4px 6px; border-radius: 4px; margin-top: 3px; word-break: break-all; border: 1px solid #2a2a2a; }
         </style>
     </head>
     <body>
@@ -108,12 +113,12 @@ app.get('/', requireAuth, (req, res) => {
                     </div>
                     <div class="row-split">
                         <div>
-                            <label>Masa Aktif (Durasi):</label>
+                            <label id="durationLabel">Masa Aktif (Hari):</label>
                             <input type="number" id="days_valid" value="30" min="1" required>
                         </div>
                         <div>
                             <label>Satuan Waktu:</label>
-                            <select id="duration_unit">
+                            <select id="duration_unit" onchange="updateDurationLabel()">
                                 <option value="days">Hari (Days)</option>
                                 <option value="minutes">Menit (Test 1 Min)</option>
                             </select>
@@ -124,13 +129,13 @@ app.get('/', requireAuth, (req, res) => {
                     
                     <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
                 </form>
-                <div id="msg"></div>
+                <div id="msg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
             <div class="card">
-                <h3 style="color: #00ffcc; margin-top: 0; font-size: 16px; text-align: center;">Daftar Key & Status Device Slot</h3>
+                <h3 style="color: #00ffcc; margin-top: 0; font-size: 16px; text-align: center;">Daftar Key & Debug Device ID</h3>
                 <table>
                     <thead>
-                        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Aksi</th></tr>
+                        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot & Debug ID</th><th>Aksi</th></tr>
                     </thead>
                     <tbody id="keyList">
                         <tr><td colspan="4" style="text-align: center; color: #888;">Memuat data...</td></tr>
@@ -140,12 +145,24 @@ app.get('/', requireAuth, (req, res) => {
         </div>
         <script>
             document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+            
+            function updateDurationLabel() {
+                const unit = document.getElementById('duration_unit').value;
+                const label = document.getElementById('durationLabel');
+                if (unit === 'minutes') {
+                    label.innerText = 'Masa Aktif (Menit):';
+                } else {
+                    label.innerText = 'Masa Aktif (Hari):';
+                }
+            }
+
             function generateKey() {
                 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                 let res = 'RIO-';
                 for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
                 document.getElementById('license_key').value = res;
             }
+
             async function loadKeys() {
                 try {
                     const res = await fetch('/api/admin/list');
@@ -154,18 +171,28 @@ app.get('/', requireAuth, (req, res) => {
                     if(data.ok && data.licenses.length > 0) {
                         document.getElementById('storageStatus').innerText = data.licenses.length + ' / 500 Keys (Aman)';
                         document.getElementById('storageBar').style.width = Math.min((data.licenses.length / 500) * 100, 100) + '%';
+                        
                         tbody.innerHTML = data.licenses.map(item => {
                             const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
                             const maxDev = item.max_devices || 1;
                             const isFull = devices.length >= maxDev;
                             const badgeColor = isFull ? '#ff4d4d' : '#00ffcc';
+                            
+                            // Render daftar device ID yang masuk untuk keperluan debug
+                            let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span>\`;
+                            if (devices.length > 0) {
+                                deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
+                            } else {
+                                deviceHtml += \`<div style="font-size: 11px; color: #666; margin-top: 2px;">Belum ada device masuk</div>\`;
+                            }
+
                             return \`
                                 <tr>
-                                    <td style="font-family: monospace; color: #00ffcc;">\${item.license_key}</td>
+                                    <td style="font-family: monospace; color: #00ffcc; font-weight: bold;">\${item.license_key}</td>
                                     <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Menit' : 'Hari'}</td>
-                                    <td><span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span></td>
+                                    <td>\${deviceHtml}</td>
                                     <td>
-                                        <button class="btn-reset" onclick="resetDevice(\${item.id})" title="Reset Device ID">Reset</button>
+                                        <button class="btn-reset" onclick="resetDevice(\${item.id})" title="Reset Device ID">Reset</button><br>
                                         <button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button>
                                     </td>
                                 </tr>
@@ -178,18 +205,21 @@ app.get('/', requireAuth, (req, res) => {
                     }
                 } catch(err) { console.error(err); }
             }
+
             async function deleteKey(id) {
                 if(!confirm('Yakin ingin menghapus key ini?')) return;
                 const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
                 const data = await res.json();
                 if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
             }
+
             async function resetDevice(id) {
                 if(!confirm('Reset Device ID untuk key ini agar bisa dipakai perangkat baru?')) return;
                 const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
                 const data = await res.json();
-                if(data.ok) { alert('✅ Device berhasil di-reset!'); loadKeys(); } else { alert('Gagal: ' + data.message); }
+                if(data.ok) { loadKeys(); } else { alert('Gagal: ' + data.message); }
             }
+
             document.getElementById('formKey').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const key = document.getElementById('license_key').value;
@@ -198,11 +228,13 @@ app.get('/', requireAuth, (req, res) => {
                 const max_devices = document.getElementById('max_devices').value;
                 const msg = document.getElementById('msg');
                 msg.style.color = '#ccc'; msg.innerText = 'Menyimpan...';
+                
                 const res = await fetch('/api/admin/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices }) });
                 const data = await res.json();
                 if(data.ok) { msg.style.color = '#00ffcc'; msg.innerText = '✅ ' + data.message; document.getElementById('license_key').value = ''; loadKeys(); }
                 else { msg.style.color = '#ff4d4d'; msg.innerText = '❌ ' + data.message; }
             });
+
             loadKeys();
         </script>
     </body>
