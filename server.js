@@ -376,16 +376,16 @@ app.get('/', requireAuth, (req, res) => {
                     document.getElementById('storageBar').style.width = Math.min((total / 500) * 100, 100) + '%';
 
                     if (total > 0) {
-                        tbody.innerHTML = licenses.map(item => \`
+                        tbody.innerHTML = licenses.map(item => `
                             <tr>
-                                <td style="color: var(--accent-cyan); font-weight: 600;">\${item.license_key}</td>
-                                <td>\${item.days_valid || 30} Hari</td>
-                                <td><span style="color: \${item.is_active ? 'var(--accent-emerald)' : 'var(--accent-danger)'}">\${item.is_active ? '● Aktif' : '○ Nonaktif'}</span></td>
+                                <td style="color: var(--accent-cyan); font-weight: 600;">${item.license_key}</td>
+                                <td>${item.days_valid || 30} Hari</td>
+                                <td><span style="color: ${item.is_active ? 'var(--accent-emerald)' : 'var(--accent-danger)'}">${item.is_active ? '● Aktif' : '○ Nonaktif'}</span></td>
                                 <td style="text-align: right;">
-                                    <button class="btn btn-danger" onclick="deleteKey(\${item.id})">Hapus</button>
+                                    <button class="btn btn-danger" onclick="deleteKey(${item.id})">Hapus</button>
                                 </td>
                             </tr>
-                        \`).join('');
+                        `).join('');
                     } else {
                         tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Belum ada license key tersimpan di database.</td></tr>';
                     }
@@ -469,7 +469,7 @@ app.get('/', requireAuth, (req, res) => {
 
 // ==================== BACKEND API ROUTES ====================
 
-// 1. Endpoint Daftar Lisensi
+// 1. Endpoint Daftar Lisensi (Dilengkapi migrasi otomatis kolom expires_at)
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
@@ -488,6 +488,9 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
+    // Pastikan kolom expires_at ada jika tabel sudah dibuat sebelumnya
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at BIGINT;`;
 
     const licenses = await sql`SELECT id, license_key, days_valid, is_active, expires_at, created_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
@@ -539,6 +542,8 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at BIGINT;`;
 
     const nowSec = Math.floor(Date.now() / 1000);
     const expiresAt = nowSec + (days * 24 * 60 * 60);
