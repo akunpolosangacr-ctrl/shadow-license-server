@@ -6,12 +6,12 @@ export async function POST(request) {
     const { license_key, days_valid } = await request.json();
     
     if (!license_key) {
-      return NextResponse.json({ ok: false, message: "License key wajib diisi!" }, { status: 400 });
+      return NextResponse.json({ ok: false, message: "Key wajib diisi!" }, { status: 400 });
     }
 
     const days = parseInt(days_valid) || 30;
 
-    // Pastikan tabel sudah ada
+    // Otomatis buat tabel licenses jika belum ada di database Neon
     await sql`
       CREATE TABLE IF NOT EXISTS licenses (
           id SERIAL PRIMARY KEY,
@@ -23,7 +23,6 @@ export async function POST(request) {
       );
     `;
 
-    // Insert atau update key ke database Neon
     await sql`
       INSERT INTO licenses (license_key, days_valid, is_active)
       VALUES (${license_key}, ${days}, TRUE)
@@ -31,7 +30,7 @@ export async function POST(request) {
       DO UPDATE SET days_valid = ${days}, is_active = TRUE
     `;
 
-    return NextResponse.json({ ok: true, message: `Key berhasil disimpan dengan masa aktif ${days} hari!` });
+    return NextResponse.json({ ok: true, message: "Key berhasil tersimpan ke database Neon!" });
   } catch (error) {
     console.error("Database error:", error);
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });

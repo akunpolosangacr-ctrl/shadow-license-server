@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'Shadow License Server',
-  description: 'Admin panel & License verification API',
+  description: 'License Management Panel',
 };
 
 export default function RootLayout({ children }) {

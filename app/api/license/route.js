@@ -10,7 +10,6 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, message: "License key wajib diisi!" }, { status: 400 });
     }
 
-    // Cek key di database Neon
     const result = await sql`
       SELECT * FROM licenses WHERE license_key = ${license_key} AND is_active = TRUE
     `;
@@ -49,7 +48,6 @@ export async function POST(request) {
       min_app_version: "2.0.8"
     };
 
-    // Encode Base64 URL Safe (buang padding '=')
     const jsonStr = JSON.stringify(licenseData);
     const base64Data = Buffer.from(jsonStr).toString('base64')
         .replace(/\+/g, '-')

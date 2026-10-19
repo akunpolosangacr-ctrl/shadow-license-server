@@ -37,13 +37,13 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.ok) {
-        setMessage('✅ Sukses! Key tersimpan ke database Neon.');
+        setMessage('✅ Sukses! Key tersimpan di database Neon.');
         setKey('');
       } else {
-        setMessage('❌ Gagal: ' + (data.message || 'Terjadi kesalahan'));
+        setMessage('❌ Gagal: ' + (data.message || 'Error saat menyimpan'));
       }
     } catch (err) {
-      setMessage('❌ Gagal terhubung ke server.');
+      setMessage('❌ Terjadi kesalahan jaringan.');
     } finally {
       setLoading(false);
     }
@@ -51,9 +51,9 @@ export default function AdminPage() {
 
   return (
     <main style={{ maxWidth: '600px', margin: '40px auto', fontFamily: 'sans-serif', padding: '25px', background: '#121212', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.6)' }}>
-      <h2 style={{ color: '#00ffcc', textAlign: 'center', marginTop: 0 }}>Shadow License Admin Panel</h2>
+      <h2 style={{ color: '#00ffcc', textAlign: 'center', marginTop: 0 }}>Shadow License Admin</h2>
       <p style={{ fontSize: '13px', color: '#aaa', textAlign: 'center' }}>
-        Endpoint URL untuk APK: <br/>
+        Endpoint URL APK: <br/>
         <code style={{ color: '#00ffcc' }}>{apiBaseUrl ? `${apiBaseUrl}/api/license` : 'Loading...'}</code>
       </p>
       
@@ -65,7 +65,7 @@ export default function AdminPage() {
               type="text" 
               value={key} 
               onChange={(e) => setKey(e.target.value)} 
-              placeholder="Contoh: VIP123 atau RIO-xxxx" 
+              placeholder="Contoh: VIP123 / RIO-KEY99" 
               required
               style={{ flex: 1, padding: '12px', background: '#1e1e1e', border: '1px solid #333', color: '#fff', borderRadius: '6px' }}
             />
@@ -74,7 +74,7 @@ export default function AdminPage() {
         </div>
 
         <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>Masa Aktif (Berapa Hari):</label>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>Masa Aktif (Hari / Days):</label>
           <input 
             type="number" 
             value={days} 
@@ -85,7 +85,7 @@ export default function AdminPage() {
         </div>
 
         <button type="submit" disabled={loading} style={{ padding: '14px', background: '#00ffcc', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '6px', cursor: 'pointer', marginTop: '10px' }}>
-          {loading ? 'Menyimpan ke Database Neon...' : 'Simpan Key ke Database'}
+          {loading ? 'Menyimpan ke Database Neon...' : 'Simpan Key ke Database Neon'}
         </button>
       </form>
 
