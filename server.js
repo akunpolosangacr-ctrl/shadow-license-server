@@ -4,6 +4,7 @@ const { neon } = require('@neondatabase/serverless');
 const app = express();
 app.use(express.json());
 
+// Mengambil kredensial admin dari Environment Variables Vercel
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
@@ -31,7 +32,7 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access Denied: Username atau Password salah!');
 };
 
-// Inisialisasi & Migrasi Otomatis Tabel Database
+// Inisialisasi & Migrasi Aman untuk Kolom Database PostgreSQL
 async function initDB(sql) {
   await sql`CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY,
@@ -40,19 +41,19 @@ async function initDB(sql) {
     unit VARCHAR(10) DEFAULT 'days',
     max_devices INT DEFAULT 1,
     device_id TEXT DEFAULT '',
-    created_at BIGINT DEFAULT 0,
-    expires_at BIGINT DEFAULT 0
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NULL
   );`;
   
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`; } catch(e){}
   try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0`; } catch(e){}
-  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at BIGINT DEFAULT 0`; } catch(e){}
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`; } catch(e){}
+  try { await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE NULL`; } catch(e){}
 }
 
-// Halaman Admin Panel
+// GET / (Admin Panel Interface)
 app.get('/', requireAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -163,10 +164,15 @@ app.get('/', requireAuth, (req, res) => {
                     const res = await fetch('/api/admin/list');
                     const data = await res.json();
                     const tbody = document.getElementById('keyList');
-                    if(data.ok && data.licenses.length > 0) {
+                    if(res.ok && data.ok && data.licenses) {
                         document.getElementById('storageStatus').innerText = data.licenses.length + ' / 500 Keys (Aman)';
                         document.getElementById('storageBar').style.width = Math.min((data.licenses.length / 500) * 100, 100) + '%';
                         
+                        if(data.licenses.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
+                            return;
+                        }
+
                         tbody.innerHTML = data.licenses.map(item => {
                             const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
                             const maxDev = item.max_devices || 1;
@@ -193,11 +199,12 @@ app.get('/', requireAuth, (req, res) => {
                             \`;
                         }).join('');
                     } else {
-                        document.getElementById('storageStatus').innerText = '0 / 500 Keys (Kosong)';
-                        document.getElementById('storageBar').style.width = '2%';
-                        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
+                        tbody.innerHTML = \`<tr><td colspan="4" style="text-align: center; color: #ff4d4d;">Gagal memuat data: \${data.message || 'Error'}</td></tr>\`;
                     }
-                } catch(err) { console.error(err); }
+                } catch(err) { 
+                    console.error(err); 
+                    document.getElementById('keyList').innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ff4d4d;">Gagal terhubung ke server.</td></tr>';
+                }
             }
 
             async function deleteKey(id) {
@@ -225,8 +232,8 @@ app.get('/', requireAuth, (req, res) => {
                 
                 const res = await fetch('/api/admin/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices }) });
                 const data = await res.json();
-                if(data.ok) { msg.style.color = '#00ffcc'; msg.innerText = '✅ ' + data.message; document.getElementById('license_key').value = ''; loadKeys(); }
-                else { msg.style.color = '#ff4d4d'; msg.innerText = '❌ ' + data.message; }
+                if(res.ok && data.ok) { msg.style.color = '#00ffcc'; msg.innerText = '✅ ' + data.message; document.getElementById('license_key').value = ''; loadKeys(); }
+                else { msg.style.color = '#ff4d4d'; msg.innerText = '❌ ' + (data.message || 'Terjadi kesalahan'); }
             });
 
             loadKeys();
@@ -236,37 +243,45 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// API Routes
+// GET /api/admin/list
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
-    if (!process.env.DATABASE_URL) return res.json({ ok: true, licenses: [] });
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum dikonfigurasi!" });
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) { res.json({ ok: true, licenses: [] }); }
+  } catch (err) { 
+    console.error("Database Error:", err);
+    res.status(500).json({ ok: false, message: err.message }); 
+  }
 });
 
+// POST /api/admin/delete
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
+    if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
     await sql`DELETE FROM licenses WHERE id = ${id}`;
     res.json({ ok: true, message: "Key berhasil dihapus!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
+// POST /api/admin/reset-device
 app.post('/api/admin/reset-device', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
+    if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
     await sql`UPDATE licenses SET device_id = '' WHERE id = ${id}`;
     res.json({ ok: true, message: "Device ID berhasil di-reset!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
+// POST /api/admin/create (Mencegah Duplikat & Memformat Waktu dengan Objek Date Sah)
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -274,28 +289,43 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     await initDB(sql);
 
     const { license_key, days_valid, unit, max_devices } = req.body;
-    if (!license_key) return res.status(400).json({ ok: false, message: "Key wajib diisi!" });
     
-    const duration = parseInt(days_valid) || 30;
+    // Server-side validations
+    if (!license_key || typeof license_key !== 'string' || license_key.trim() === '') {
+      return res.status(400).json({ ok: false, message: "License key wajib diisi!" });
+    }
+
+    const duration = parseInt(days_valid);
+    if (isNaN(duration) || duration <= 0) {
+      return res.status(400).json({ ok: false, message: "Durasi harus angka positif!" });
+    }
+
     const durationUnit = unit === 'minutes' ? 'minutes' : 'days';
     const maxDev = parseInt(max_devices) || 1;
 
-    // Kalkulasi Waktu Akurat Menggunakan Unix Timestamp (Detik)
-    const nowSec = Math.floor(Date.now() / 1000);
-    const addedSec = durationUnit === 'minutes' ? (duration * 60) : (duration * 24 * 60 * 60);
-    const expiresSec = nowSec + addedSec;
+    // Cek Duplikat Key Secara Eksplisit
+    const existing = await sql`SELECT id FROM licenses WHERE license_key = ${license_key.trim()}`;
+    if (existing.length > 0) {
+      return res.status(400).json({ ok: false, message: "License key sudah terdaftar di database! Gunakan key lain." });
+    }
+
+    // Format Tanggal Sah untuk Column TIMESTAMP PostgreSQL
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (durationUnit === 'minutes' ? duration * 60 * 1000 : duration * 24 * 60 * 60 * 1000));
 
     await sql`
       INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
-      VALUES (${license_key}, ${duration}, ${durationUnit}, ${maxDev}, '', ${nowSec}, ${expiresSec})
-      ON CONFLICT (license_key) DO UPDATE 
-      SET days_valid = ${duration}, unit = ${durationUnit}, max_devices = ${maxDev}, created_at = ${nowSec}, expires_at = ${expiresSec}
+      VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now}, ${expiresAt})
     `;
     
     res.json({ ok: true, message: `Key berhasil dibuat (${duration} ${durationUnit === 'minutes' ? 'menit' : 'hari'}, Max ${maxDev} Device)!` });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Create License Error:", err);
+    res.status(500).json({ ok: false, message: err.message }); 
+  }
 });
 
+// POST /api/license (Validasi Lisensi & Binding Device)
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
@@ -309,17 +339,17 @@ app.post('/api/license', async (req, res) => {
     if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
 
     const record = result[0];
-    const nowSec = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
 
-    // 1. Cek Expired Menggunakan Perbandingan Angka Timestamp
-    if (record.expires_at && parseInt(record.expires_at) > 0) {
-      const expiresSec = parseInt(record.expires_at);
-      if (nowSec > expiresSec) {
+    // 1. Cek Apakah Key Expired
+    if (record.expires_at) {
+      const expiresMs = new Date(record.expires_at).getTime();
+      if (nowMs > expiresMs) {
         return res.json({ ok: false, message: "License key sudah kedaluwarsa (expired)!" });
       }
     }
 
-    // 2. Validasi Device ID
+    // 2. Validasi Device Slot
     const clientDevice = device_id || "unknown";
     const maxDevs = record.max_devices || 1;
     let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -337,17 +367,18 @@ app.post('/api/license', async (req, res) => {
       }
     }
 
-    const expiresTimestamp = record.expires_at ? parseInt(record.expires_at) : (nowSec + 86400);
+    const serverTimeSec = Math.floor(nowMs / 1000);
+    const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
 
     const licenseData = {
       license_id: `CUSTOM-${record.id}`,
       plan: `VIP ${record.days_valid} ${record.unit === 'minutes' ? 'MENIT' : 'HARI'}`,
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: clientDevice,
-      expires_at: expiresTimestamp,
-      server_time: nowSec,
+      expires_at: expiresTimestampSec,
+      server_time: serverTimeSec,
       session_token: "mock_session_" + Math.random(),
-      session_expires_at: expiresTimestamp,
+      session_expires_at: expiresTimestampSec,
       lib_enabled: true,
       library: {
         version: "2.0.42",
