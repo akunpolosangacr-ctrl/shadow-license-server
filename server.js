@@ -7,7 +7,6 @@ app.use(express.json());
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
-// Middleware Proteksi Password (HTTP Basic Auth) yang Aman dari Crash
 const requireAuth = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -32,7 +31,6 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access Denied: Username atau Password salah!');
 };
 
-// ==================== FRONTEND DASHBOARD (ULTRA PREMIUM UI) ====================
 app.get('/', requireAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -84,7 +82,6 @@ app.get('/', requireAuth, (req, res) => {
                 to { opacity: 1; transform: translateY(0); }
             }
 
-            /* Header Styles */
             .header-card {
                 background: var(--bg-card);
                 border: 1px solid var(--border-color);
@@ -120,7 +117,6 @@ app.get('/', requireAuth, (req, res) => {
             }
             .sound-toggle.active { color: var(--accent-cyan); border-color: rgba(0,255,204,0.4); }
 
-            /* Grid Stats */
             .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
             @media(min-width: 540px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
             .stat-card {
@@ -130,7 +126,6 @@ app.get('/', requireAuth, (req, res) => {
             .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
             .stat-value { font-size: 20px; font-weight: 700; color: #fff; font-family: var(--font-mono); }
 
-            /* Storage Progress Bar */
             .storage-card {
                 background: var(--bg-card); border: 1px solid var(--border-color);
                 border-radius: 14px; padding: 16px 20px;
@@ -139,7 +134,6 @@ app.get('/', requireAuth, (req, res) => {
             .storage-track { width: 100%; height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; }
             .storage-fill { width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald)); border-radius: 3px; transition: width 0.5s ease; }
 
-            /* Card Containers */
             .card {
                 background: var(--bg-card); border: 1px solid var(--border-color);
                 border-radius: 16px; padding: 22px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
@@ -152,7 +146,6 @@ app.get('/', requireAuth, (req, res) => {
                 font-family: var(--font-mono); color: var(--accent-cyan); word-break: break-all; margin-bottom: 16px;
             }
 
-            /* Form Styling */
             .form-group { margin-bottom: 14px; }
             label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
             .input-row { display: flex; gap: 8px; }
@@ -174,7 +167,6 @@ app.get('/', requireAuth, (req, res) => {
             .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--accent-danger); padding: 6px 12px; font-size: 11px; }
             .btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
 
-            /* Table Layout */
             .table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; }
             table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
             th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
@@ -183,7 +175,6 @@ app.get('/', requireAuth, (req, res) => {
 
             .empty-state { text-align: center; color: var(--text-muted); padding: 24px; font-size: 13px; }
             
-            /* Toast Notifications */
             #toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
             .toast {
                 background: #11151C; border: 1px solid var(--border-color); color: #fff;
@@ -198,7 +189,6 @@ app.get('/', requireAuth, (req, res) => {
     </head>
     <body>
         <div class="dashboard-container">
-            <!-- Header -->
             <div class="header-card">
                 <div class="brand-group">
                     <div class="brand-icon">
@@ -217,7 +207,6 @@ app.get('/', requireAuth, (req, res) => {
                 </div>
             </div>
 
-            <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <span class="stat-label">Total Licenses</span>
@@ -237,7 +226,6 @@ app.get('/', requireAuth, (req, res) => {
                 </div>
             </div>
 
-            <!-- Storage Capacity Bar -->
             <div class="storage-card">
                 <div class="storage-header">
                     <span>Neon Database Storage Limit</span>
@@ -248,7 +236,6 @@ app.get('/', requireAuth, (req, res) => {
                 </div>
             </div>
 
-            <!-- License Creator Form -->
             <div class="card">
                 <div class="card-title">Generate New License Key</div>
                 <div class="url-display" id="apiUrlBox">API Endpoint: Loading...</div>
@@ -270,7 +257,6 @@ app.get('/', requireAuth, (req, res) => {
                 <div id="msg"></div>
             </div>
 
-            <!-- License Management Table -->
             <div class="card">
                 <div class="card-title">Database Records & Management</div>
                 <div class="table-wrapper">
@@ -376,16 +362,19 @@ app.get('/', requireAuth, (req, res) => {
                     document.getElementById('storageBar').style.width = Math.min((total / 500) * 100, 100) + '%';
 
                     if (total > 0) {
-                        tbody.innerHTML = licenses.map(item => `
-                            <tr>
-                                <td style="color: var(--accent-cyan); font-weight: 600;">${item.license_key}</td>
-                                <td>${item.days_valid || 30} Hari</td>
-                                <td><span style="color: ${item.is_active ? 'var(--accent-emerald)' : 'var(--accent-danger)'}">${item.is_active ? '● Aktif' : '○ Nonaktif'}</span></td>
-                                <td style="text-align: right;">
-                                    <button class="btn btn-danger" onclick="deleteKey(${item.id})">Hapus</button>
-                                </td>
-                            </tr>
-                        `).join('');
+                        let htmlRows = '';
+                        for (let i = 0; i < licenses.length; i++) {
+                            let item = licenses[i];
+                            let statusText = item.is_active ? '● Aktif' : '○ Nonaktif';
+                            let statusColor = item.is_active ? 'var(--accent-emerald)' : 'var(--accent-danger)';
+                            htmlRows += '<tr>' +
+                                '<td style="color: var(--accent-cyan); font-weight: 600;">' + item.license_key + '</td>' +
+                                '<td>' + (item.days_valid || 30) + ' Hari</td>' +
+                                '<td><span style="color: ' + statusColor + '">' + statusText + '</span></td>' +
+                                '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteKey(' + item.id + ')">Hapus</button></td>' +
+                                '</tr>';
+                        }
+                        tbody.innerHTML = htmlRows;
                     } else {
                         tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Belum ada license key tersimpan di database.</td></tr>';
                     }
@@ -467,9 +456,6 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// ==================== BACKEND API ROUTES ====================
-
-// 1. Endpoint Daftar Lisensi (Dilengkapi migrasi otomatis kolom expires_at)
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) {
@@ -489,7 +475,6 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
       );
     `;
 
-    // Pastikan kolom expires_at ada jika tabel sudah dibuat sebelumnya
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at BIGINT;`;
 
     const licenses = await sql`SELECT id, license_key, days_valid, is_active, expires_at, created_at FROM licenses ORDER BY id DESC`;
@@ -499,7 +484,6 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
   }
 });
 
-// 2. Endpoint Hapus Lisensi
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -515,7 +499,6 @@ app.post('/api/admin/delete', requireAuth, async (req, res) => {
   }
 });
 
-// 3. Endpoint Buat Lisensi (Menyimpan Stable Expiration Timestamp Secara Permanen)
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur di Vercel!" });
@@ -561,7 +544,6 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   }
 });
 
-// 4. Endpoint Publik Verifikasi APK (Mencegah Rolling Expiration / Waktu Bergeser)
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
