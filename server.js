@@ -1,10 +1,11 @@
 const express = require('express');
 const { neon } = require('@neondatabase/serverless');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
 
-// Mengambil kredensial admin dari Environment Variables Vercel
+// Mengambil kredensial admin dari Environment Variables
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
@@ -23,9 +24,7 @@ const requireAuth = (req, res, next) => {
     const credentials = Buffer.from(parts[1], 'base64').toString('ascii');
     const [username, password] = credentials.split(':');
 
-    if (username === ADMIN_USER && password === ADMIN_PASS) {
-      return next();
-    }
+    if (username === ADMIN_USER && password === ADMIN_PASS) { return next(); } 
   } catch (err) {}
 
   res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin"');
@@ -33,20 +32,17 @@ const requireAuth = (req, res, next) => {
 };
 
 // Inisialisasi & Migrasi Aman untuk Kolom Database PostgreSQL
-
 async function initDB(sql) {
-  await sql`
-    CREATE TABLE IF NOT EXISTS licenses (
-      id SERIAL PRIMARY KEY,
-      license_key VARCHAR(255) UNIQUE NOT NULL,
-      days_valid INT DEFAULT 30,
-      unit VARCHAR(10) DEFAULT 'days',
-      max_devices INT DEFAULT 1,
-      device_id TEXT DEFAULT '',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-      expires_at TIMESTAMPTZ NULL
-    )
-  `;
+  await sql`CREATE TABLE IF NOT EXISTS licenses (
+    id SERIAL PRIMARY KEY,
+    license_key VARCHAR(255) UNIQUE NOT NULL,
+    days_valid INT DEFAULT 30,
+    unit VARCHAR(10) DEFAULT 'days',
+    max_devices INT DEFAULT 1,
+    device_id TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NULL
+  )`;
 
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`;
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`;
@@ -55,13 +51,7 @@ async function initDB(sql) {
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`;
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`;
 
-  const cols = await sql`
-    SELECT column_name, data_type
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'licenses'
-      AND column_name IN ('created_at', 'expires_at')
-  `;
+  const cols = await sql`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'licenses' AND column_name IN ('created_at', 'expires_at')`;
 
   for (const col of cols) {
     const name = col.column_name;
@@ -69,221 +59,164 @@ async function initDB(sql) {
 
     if (name === 'created_at') {
       await sql`ALTER TABLE licenses ALTER COLUMN created_at DROP DEFAULT`;
-      await sql`
-        ALTER TABLE licenses
-        ALTER COLUMN created_at TYPE TIMESTAMPTZ
-        USING CASE
-          WHEN created_at IS NULL THEN NULL
-          WHEN created_at > 100000000000
-            THEN to_timestamp(created_at::double precision / 1000.0)
-          ELSE to_timestamp(created_at::double precision)
-        END
-      `;
+      await sql`ALTER TABLE licenses ALTER COLUMN created_at TYPE TIMESTAMPTZ USING CASE WHEN created_at IS NULL THEN NULL WHEN created_at > 100000000000 THEN to_timestamp(created_at::double precision / 1000.0) ELSE to_timestamp(created_at::double precision) END`;
       await sql`ALTER TABLE licenses ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP`;
     } else {
       await sql`ALTER TABLE licenses ALTER COLUMN expires_at DROP DEFAULT`;
-      await sql`
-        ALTER TABLE licenses
-        ALTER COLUMN expires_at TYPE TIMESTAMPTZ
-        USING CASE
-          WHEN expires_at IS NULL THEN NULL
-          WHEN expires_at > 100000000000
-            THEN to_timestamp(expires_at::double precision / 1000.0)
-          ELSE to_timestamp(expires_at::double precision)
-        END
-      `;
+      await sql`ALTER TABLE licenses ALTER COLUMN expires_at TYPE TIMESTAMPTZ USING CASE WHEN expires_at IS NULL THEN NULL WHEN expires_at > 100000000000 THEN to_timestamp(expires_at::double precision / 1000.0) ELSE to_timestamp(expires_at::double precision) END`;
     }
   }
 }
 
 // GET / (Admin Panel Interface)
 app.get('/', requireAuth, (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Shadow License Admin Panel</title>
-        <style>
-            body { background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-            .container { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
-            .card { background: #121212; padding: 25px; border-radius: 14px; box-shadow: 0 4px 25px rgba(0,255,204,0.15); border: 1px solid #222; box-sizing: border-box; }
-            h2 { color: #00ffcc; text-align: center; margin: 0 0 5px 0; font-size: 20px; }
-            p.sub { font-size: 12px; color: #888; text-align: center; margin-bottom: 20px; word-break: break-all; }
-            .storage-container { background: #1a1a1a; padding: 12px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
-            .storage-info { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
-            .storage-bar-bg { width: 100%; background: #222; height: 8px; border-radius: 4px; overflow: hidden; }
-            .storage-bar-fill { width: 0%; background: #00ffcc; height: 100%; transition: width 0.4s ease; }
-            .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px dashed #333; font-size: 12px; color: #00ffcc; margin-bottom: 20px; text-align: center; }
-            label { display: block; margin-bottom: 6px; font-size: 13px; color: #ccc; }
-            input, select { width: 100%; padding: 12px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
-            .row { display: flex; gap: 10px; }
-            .row-split { display: flex; gap: 10px; }
-            .row-split > div { flex: 1; }
-            button.submit-btn { width: 100%; padding: 13px; background: #00ffcc; color: #000; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-            button.submit-btn:hover { background: #00cca3; }
-            .btn-random { background: #333; color: #fff; width: 110px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-            th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #222; vertical-align: top; }
-            th { color: #00ffcc; }
-            .btn-delete { background: #ff4d4d; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
-            .btn-reset { background: #ffa500; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; margin-bottom: 4px; }
-            .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #222; color: #00ffcc; margin-bottom: 5px; }
-            .device-debug { font-size: 11px; color: #00ffcc; font-family: monospace; background: #1a1a1a; padding: 4px 6px; border-radius: 4px; margin-top: 3px; word-break: break-all; border: 1px solid #2a2a2a; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="card">
-                <h2>Shadow License Admin</h2>
-                <p class="sub">🔒 Secure Neon PostgreSQL Storage</p>
-                <div class="storage-container">
-                    <div class="storage-info">
-                        <span>Kapasitas Storage Database</span>
-                        <span id="storageStatus">Memuat...</span>
-                    </div>
-                    <div class="storage-bar-bg">
-                        <div id="storageBar" class="storage-bar-fill"></div>
-                    </div>
-                </div>
-                <div class="url-box" id="apiUrlBox">Endpoint API: Memuat...</div>
-                <form id="formKey">
-                    <label>Custom License Key:</label>
-                    <div class="row">
-                        <input type="text" id="license_key" placeholder="Contoh: VIP123 / RIO-999" required style="margin-bottom:0;">
-                        <button type="button" class="btn-random" onclick="generateKey()">Random</button>
-                    </div>
-                    <div class="row-split">
-                        <div>
-                            <label id="durationLabel">Masa Aktif (Hari):</label>
-                            <input type="number" id="days_valid" value="30" min="1" required>
-                        </div>
-                        <div>
-                            <label>Satuan Waktu:</label>
-                            <select id="duration_unit" onchange="updateDurationLabel()">
-                                <option value="days">Hari (Days)</option>
-                                <option value="minutes">Menit (Test 1 Min)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <label>Maksimal Device (Max Devices):</label>
-                    <input type="number" id="max_devices" value="1" min="1" required>
-                    
-                    <button type="submit" class="submit-btn">Simpan ke Database Neon</button>
-                </form>
-                <div id="msg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
-            </div>
-            <div class="card">
-                <h3 style="color: #00ffcc; margin-top: 0; font-size: 16px; text-align: center;">Daftar Key & Debug Device ID</h3>
-                <table>
-                    <thead>
-                        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot & Debug ID</th><th>Aksi</th></tr>
-                    </thead>
-                    <tbody id="keyList">
-                        <tr><td colspan="4" style="text-align: center; color: #888;">Memuat data...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <script>
-            document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
-            
-            function updateDurationLabel() {
-                const unit = document.getElementById('duration_unit').value;
-                const label = document.getElementById('durationLabel');
-                label.innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
-            }
-
-            function generateKey() {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                let res = 'RIO-';
-                for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
-                document.getElementById('license_key').value = res;
-            }
-
-            async function loadKeys() {
-                try {
-                    const res = await fetch('/api/admin/list');
-                    const data = await res.json();
-                    const tbody = document.getElementById('keyList');
-                    if(res.ok && data.ok && data.licenses) {
-                        document.getElementById('storageStatus').innerText = data.licenses.length + ' / 500 Keys (Aman)';
-                        document.getElementById('storageBar').style.width = Math.min((data.licenses.length / 500) * 100, 100) + '%';
-                        
-                        if(data.licenses.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
-                            return;
-                        }
-
-                        tbody.innerHTML = data.licenses.map(item => {
-                            const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
-                            const maxDev = item.max_devices || 1;
-                            const isFull = devices.length >= maxDev;
-                            const badgeColor = isFull ? '#ff4d4d' : '#00ffcc';
-                            
-                            let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span>\`;
-                            if (devices.length > 0) {
-                                deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
-                            } else {
-                                deviceHtml += \`<div style="font-size: 11px; color: #666; margin-top: 2px;">Belum ada device masuk</div>\`;
-                            }
-
-                            return \`
-                                <tr>
-                                    <td style="font-family: monospace; color: #00ffcc; font-weight: bold;">\${item.license_key}</td>
-                                    <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Menit' : 'Hari'}</td>
-                                    <td>\${deviceHtml}</td>
-                                    <td>
-                                        <button class="btn-reset" onclick="resetDevice(\${item.id})" title="Reset Device ID">Reset</button><br>
-                                        <button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button>
-                                    </td>
-                                </tr>
-                            \`;
-                        }).join('');
-                    } else {
-                        tbody.innerHTML = \`<tr><td colspan="4" style="text-align: center; color: #ff4d4d;">Gagal memuat data: \${data.message || 'Error'}</td></tr>\`;
-                    }
-                } catch(err) { 
-                    console.error(err); 
-                    document.getElementById('keyList').innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ff4d4d;">Gagal terhubung ke server.</td></tr>';
-                }
-            }
-
-            async function deleteKey(id) {
-                if(!confirm('Yakin ingin menghapus key ini?')) return;
-                const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-                const data = await res.json();
-                if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
-            }
-
-            async function resetDevice(id) {
-                if(!confirm('Reset Device ID untuk key ini agar bisa dipakai perangkat baru?')) return;
-                const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-                const data = await res.json();
-                if(data.ok) { loadKeys(); } else { alert('Gagal: ' + data.message); }
-            }
-
-            document.getElementById('formKey').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const key = document.getElementById('license_key').value;
-                const days = document.getElementById('days_valid').value;
-                const unit = document.getElementById('duration_unit').value;
-                const max_devices = document.getElementById('max_devices').value;
-                const msg = document.getElementById('msg');
-                msg.style.color = '#ccc'; msg.innerText = 'Menyimpan...';
-                
-                const res = await fetch('/api/admin/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices }) });
-                const data = await res.json();
-                if(res.ok && data.ok) { msg.style.color = '#00ffcc'; msg.innerText = '✅ ' + data.message; document.getElementById('license_key').value = ''; loadKeys(); }
-                else { msg.style.color = '#ff4d4d'; msg.innerText = '❌ ' + (data.message || 'Terjadi kesalahan'); }
-            });
-
-            loadKeys();
-        </script>
-    </body>
-    </html>
-  `);
+  res.send(`<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadow License Admin Panel</title>
+<style>
+  body { background: #0f172a; color: #f8fafc; font-family: monospace; padding: 20px; }
+  .container { max-width: 600px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+  h2 { color: #38bdf8; text-align: center; }
+  .card { background: #0f172a; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #334155; }
+  input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px; box-sizing: border-box; }
+  button { background: #0284c7; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; width: 100%; }
+  button:hover { background: #0369a1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+  th, td { border: 1px solid #334155; padding: 8px; text-align: left; }
+  th { background: #1e293b; color: #38bdf8; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+  .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 11px; }
+  .btn-delete:hover { background: #dc2626; }
+  .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 11px; margin-bottom: 4px; }
+  .btn-reset:hover { background: #ca8a04; }
+  .device-debug { font-size: 10px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Shadow License Admin</h2>
+  <div class="card">
+    <div id="apiUrlBox" style="font-size: 12px; margin-bottom: 10px; color: #38bdf8;">API URL: Memuat...</div>
+    <form id="formKey">
+      <label>Custom License Key:</label>
+      <div style="display: flex; gap: 5px;">
+        <input type="text" id="license_key" placeholder="Contoh: RIO-ABC123XYZ" required style="margin-bottom:0;">
+        <button type="button" onclick="generateKey()" style="width: 100px;">Random</button>
+      </div>
+      <div style="margin-top: 15px;">
+        <label id="durationLabel">Masa Aktif (Hari):</label>
+        <input type="number" id="days_valid" value="30" min="1" required>
+      </div>
+      <label>Satuan Waktu:</label>
+      <select id="duration_unit" onchange="updateDurationLabel()">
+        <option value="days">Hari (Days)</option>
+        <option value="minutes">Menit (Test 1 Min)</option>
+      </select>
+      <label>Maksimal Device (Max Devices):</label>
+      <input type="number" id="max_devices" value="1" min="1" required>
+      <button type="submit">Simpan ke Database</button>
+    </form>
+    <div id="msg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+  </div>
+  <div class="card">
+    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Daftar Key & Device Terdaftar</h3>
+    <table>
+      <thead>
+        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Aksi</th></tr>
+      </thead>
+      <tbody id="keyList">
+        <tr><td colspan="4" style="text-align: center; color: #888;">Memuat data...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+function updateDurationLabel() {
+  const unit = document.getElementById('duration_unit').value;
+  document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
+}
+function generateKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let res = 'RIO-';
+  for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+  document.getElementById('license_key').value = res;
+}
+async function loadKeys() {
+  try {
+    const res = await fetch('/api/admin/list');
+    const data = await res.json();
+    const tbody = document.getElementById('keyList');
+    if(res.ok && data.ok && data.licenses) {
+      if(data.licenses.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.licenses.map(item => {
+        const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
+        const maxDev = item.max_devices || 1;
+        const isFull = devices.length >= maxDev;
+        const badgeColor = isFull ? '#ef4444' : '#38bdf8';
+        let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span>\`;
+        if (devices.length > 0) {
+          deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
+        } else {
+          deviceHtml += '<div style="font-size: 10px; color: #666; margin-top: 2px;">Belum ada device</div>';
+        }
+        return \`<tr>
+          <td style="font-family: monospace; color: #38bdf8; font-weight: bold;">\${item.license_key}</td>
+          <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Menit' : 'Hari'}</td>
+          <td>\${deviceHtml}</td>
+          <td>
+            <button class="btn-reset" onclick="resetDevice(\${item.id})">Reset</button><br>
+            <button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button>
+          </td>
+        </tr>\`;
+      }).join('');
+    }
+  } catch(err) { console.error(err); }
+}
+async function deleteKey(id) {
+  if(!confirm('Yakin ingin menghapus key ini?')) return;
+  const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const data = await res.json();
+  if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
+}
+async function resetDevice(id) {
+  if(!confirm('Reset Device ID untuk key ini?')) return;
+  const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const data = await res.json();
+  if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
+}
+document.getElementById('formKey').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const key = document.getElementById('license_key').value;
+  const days = document.getElementById('days_valid').value;
+  const unit = document.getElementById('duration_unit').value;
+  const max_devices = document.getElementById('max_devices').value;
+  const msg = document.getElementById('msg');
+  msg.style.color = '#ccc'; msg.innerText = 'Menyimpan...';
+  const res = await fetch('/api/admin/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
+  });
+  const data = await res.json();
+  if(res.ok && data.ok) {
+    msg.style.color = '#38bdf8'; msg.innerText = '✅ ' + data.message;
+    document.getElementById('license_key').value = '';
+    loadKeys();
+  } else {
+    msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Terjadi kesalahan');
+  }
+});
+loadKeys();
+</script>
+</body>
+</html>`);
 });
 
 // GET /api/admin/list
@@ -294,9 +227,8 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) { 
-    console.error("Database Error:", err);
-    res.status(500).json({ ok: false, message: err.message }); 
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -324,7 +256,7 @@ app.post('/api/admin/reset-device', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// POST /api/admin/create (Mencegah Duplikat & Memformat Waktu dengan Objek Date Sah)
+// POST /api/admin/create
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -332,43 +264,33 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     await initDB(sql);
 
     const { license_key, days_valid, unit, max_devices } = req.body;
-    
-    // Server-side validations
     if (!license_key || typeof license_key !== 'string' || license_key.trim() === '') {
       return res.status(400).json({ ok: false, message: "License key wajib diisi!" });
     }
-
     const duration = parseInt(days_valid);
     if (isNaN(duration) || duration <= 0) {
       return res.status(400).json({ ok: false, message: "Durasi harus angka positif!" });
     }
-
     const durationUnit = unit === 'minutes' ? 'minutes' : 'days';
     const maxDev = parseInt(max_devices) || 1;
 
-    // Cek Duplikat Key Secara Eksplisit
     const existing = await sql`SELECT id FROM licenses WHERE license_key = ${license_key.trim()}`;
     if (existing.length > 0) {
-      return res.status(400).json({ ok: false, message: "License key sudah terdaftar di database! Gunakan key lain." });
+      return res.status(400).json({ ok: false, message: "License key sudah terdaftar di database!" });
     }
 
-    // Format Tanggal Sah untuk Column TIMESTAMP PostgreSQL
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (durationUnit === 'minutes' ? duration * 60 * 1000 : duration * 24 * 60 * 60 * 1000));
-
-    await sql`
-      INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) 
-      VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})
-    `;
+    
+    await sql`INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})`;
     
     res.json({ ok: true, message: `Key berhasil dibuat (${duration} ${durationUnit === 'minutes' ? 'menit' : 'hari'}, Max ${maxDev} Device)!` });
-  } catch (err) { 
-    console.error("Create License Error:", err);
-    res.status(500).json({ ok: false, message: err.message }); 
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
-// POST /api/license (Validasi Lisensi & Binding Device)
+// POST /api/license (Validasi Lisensi & Binding Device dengan Struktur & Signature Asli)
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
@@ -413,14 +335,24 @@ app.post('/api/license', async (req, res) => {
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
 
+    // Generate license_id format Hex konsisten
+    const licenseIdHex = crypto.createHash('md5').update(record.license_key).digest('hex').toUpperCase();
+    
+    // Generate session token 64 karakter hex acak
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+
     const licenseData = {
-      license_id: `CUSTOM-${record.id}`,
+      license_id: licenseIdHex,
       plan: "Correção de acesso",
-      product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
+      product: {
+        code: "rio-rise",
+        name: "Shadow Rio Rise",
+        game: "Rio Rise"
+      },
       device_id: clientDevice,
       expires_at: expiresTimestampSec,
       server_time: serverTimeSec,
-      session_token: "mock_session_" + Math.random(),
+      session_token: sessionToken,
       session_expires_at: expiresTimestampSec,
       lib_enabled: true,
       library: {
@@ -433,9 +365,31 @@ app.post('/api/license', async (req, res) => {
       min_app_version: "2.0.8"
     };
 
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    res.json({ ok: true, data: base64Data, signature: "dummy_signature" });
-  } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
+    // Encode Base64 URL-safe (tanpa padding '=')
+    const jsonString = JSON.stringify(licenseData);
+    const base64Data = Buffer.from(jsonString).toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // HMAC Signature Generation
+    const secretKey = process.env.LICENSE_SECRET || 'shadow_default_secret_key';
+    const signature = crypto.createHmac('sha256', secretKey)
+      .update(base64Data)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    res.json({ 
+      ok: true, 
+      data: base64Data, 
+      signature: signature 
+    });
+
+  } catch (err) { 
+    res.status(500).json({ ok: false, message: "Server Error: " + err.message }); 
+  }
 });
 
 module.exports = app;
