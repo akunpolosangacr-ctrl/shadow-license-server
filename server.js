@@ -1,6 +1,8 @@
 const express = require('express');
 const { neon } = require('@neondatabase/serverless');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
@@ -290,7 +292,19 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/license (Validasi Lisensi & Binding Device dengan Struktur & Signature Asli)
+// GET /api/v1/library.php (Endpoint untuk melayani file libgm.so / library game)
+app.get('/api/v1/library.php', (req, res) => {
+  const filePath = path.join(__dirname, 'libgm.so');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="libgm.so"');
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    res.status(404).send('Library file (libgm.so) not found on server.');
+  }
+});
+
+// POST /api/license (Validasi Lisensi & Dynamic Library URL)
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
@@ -341,6 +355,9 @@ app.post('/api/license', async (req, res) => {
     // Generate session token 64 karakter hex acak
     const sessionToken = crypto.randomBytes(32).toString('hex');
 
+    // Dynamic URL for library matching your server domain
+    const hostUrl = `${req.protocol}://${req.get('host')}`;
+
     const licenseData = {
       license_id: licenseIdHex,
       plan: "Correção de acesso",
@@ -360,12 +377,12 @@ app.post('/api/license', async (req, res) => {
         sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0",
         size: 926984,
         min_app_version: "2.0.8",
-        url: "https://shadowsystems.shop/api/v1/library.php?version=2.0.47"
+        url: `${hostUrl}/api/v1/library.php?version=2.0.47`
       },
       min_app_version: "2.0.8"
     };
 
-    // Encode Base64 URL-safe (tanpa padding '=')
+    // Encode Base64 URL-safe
     const jsonString = JSON.stringify(licenseData);
     const base64Data = Buffer.from(jsonString).toString('base64')
       .replace(/\+/g, '-')
