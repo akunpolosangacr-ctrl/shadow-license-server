@@ -415,7 +415,7 @@ app.post('/api/license', async (req, res) => {
 
     const licenseData = {
       license_id: `CUSTOM-${record.id}`,
-      plan: `VIP ${record.days_valid} ${record.unit === 'minutes' ? 'MENIT' : 'HARI'}`,
+      plan: "Correção de acesso",
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: clientDevice,
       expires_at: expiresTimestampSec,
@@ -424,11 +424,11 @@ app.post('/api/license', async (req, res) => {
       session_expires_at: expiresTimestampSec,
       lib_enabled: true,
       library: {
-        version: "2.0.42",
-        sha256: "b54be9ef4af47ac9c901e83885ae67705bb7a4ec1d64c5a70adc15c86754ff50",
-        size: 779152,
+        version: "2.0.47",
+        sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0",
+        size: 926984,
         min_app_version: "2.0.8",
-        url: "https://shadowcheat.com/api/v1/library.php?version=2.0.8"
+        url: "https://shadowsystems.shop/api/v1/library.php?version=2.0.47"
       },
       min_app_version: "2.0.8"
     };
