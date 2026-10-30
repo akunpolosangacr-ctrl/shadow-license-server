@@ -8,7 +8,7 @@ app.use(express.json());
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 } // Batas max file 20MB
+  limits: { fileSize: 30 * 1024 * 1024 } 
 });
 
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
@@ -97,7 +97,6 @@ app.get('/', requireAuth, (req, res) => {
     <div id="libUrlBox" style="font-size: 11px; margin-bottom: 8px; color: #38bdf8; word-break: break-all;">Library URL: Memuat...</div>
     <button type="button" onclick="copyLibraryUrl()" style="background: #10b981; margin-bottom: 15px;">📋 Copy URL Library</button>
     
-    <!-- Status Library Aktif -->
     <div class="lib-info-box" id="libInfoBox">
       <div><b>Status Library:</b> Memeriksa database...</div>
     </div>
@@ -306,7 +305,7 @@ loadKeys();
 </html>`);
 });
 
-// 1. ENDPOINT UPLOAD LIBRARY (BYTEA Neon)
+// UPLOAD LIBRARY (Ubah Buffer ke Uint8Array agar Neon/Postgres menyimpan raw bytes murni)
 app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -320,11 +319,11 @@ app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), as
     const size = fileBuffer.length;
     const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-    // Hapus data lama agar hanya menyimpan 1 file library aktif terbaru di database
     await sql`DELETE FROM runtime_files`;
     
-    // Simpan buffer asli ke kolom BYTEA Neon
-    await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${fileBuffer}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
+    // Kirim sebagai Uint8Array agar serverless driver mengenali sebagai binary byte stream
+    const uint8ArrayData = new Uint8Array(fileBuffer);
+    await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${uint8ArrayData}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
 
     res.json({ ok: true, message: `Library berhasil di-upload! (${size} bytes)`, sha256, size });
   } catch (err) {
@@ -332,7 +331,6 @@ app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), as
   }
 });
 
-// INFO LIBRARY AKTIF
 app.get('/api/admin/lib-info', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false });
@@ -346,7 +344,6 @@ app.get('/api/admin/lib-info', requireAuth, async (req, res) => {
   }
 });
 
-// HAPUS LIBRARY
 app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -358,7 +355,7 @@ app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
   }
 });
 
-// 2. ENDPOINT DOWNLOAD LIBRARY (RAW BINARY FIX)
+// DOWNLOAD LIBRARY (FIX UTAMA: Parsing Hex / Buffer / Array dengan akurat agar tidak bengkak jadi JSON)
 app.get('/api/v1/library.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
@@ -370,24 +367,27 @@ app.get('/api/v1/library.php', async (req, res) => {
       return res.status(404).send("Library file not found on server.");
     }
 
-    let fileBuffer = files[0].file_data;
+    let rawData = files[0].file_data;
+    let fileBuffer;
 
-    // Konversi aman format BYTEA dari Neon/Postgres ke Node.js Buffer murni
-    if (typeof fileBuffer === 'string') {
-      if (fileBuffer.startsWith('\\x')) {
-        fileBuffer = Buffer.from(fileBuffer.slice(2), 'hex');
+    if (Buffer.isBuffer(rawData)) {
+      fileBuffer = rawData;
+    } else if (rawData instanceof Uint8Array) {
+      fileBuffer = Buffer.from(rawData);
+    } else if (typeof rawData === 'string') {
+      if (rawData.startsWith('\\x')) {
+        fileBuffer = Buffer.from(rawData.slice(2), 'hex');
       } else {
-        fileBuffer = Buffer.from(fileBuffer, 'hex');
+        fileBuffer = Buffer.from(rawData, 'hex');
       }
-    } else if (fileBuffer && typeof fileBuffer === 'object' && fileBuffer.data && Array.isArray(fileBuffer.data)) {
-      fileBuffer = Buffer.from(fileBuffer.data);
-    } else if (!Buffer.isBuffer(fileBuffer)) {
-      fileBuffer = Buffer.from(fileBuffer);
+    } else if (rawData && typeof rawData === 'object' && rawData.data && Array.isArray(rawData.data)) {
+      fileBuffer = Buffer.from(rawData.data);
+    } else {
+      fileBuffer = Buffer.from(rawData);
     }
 
     const filename = files[0].filename || "libshadowcore.so";
 
-    // Kirim sebagai Raw Binary murni (Bukan JSON!)
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', fileBuffer.length);
