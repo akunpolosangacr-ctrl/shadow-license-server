@@ -14,7 +14,6 @@ const upload = multer({
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
-// Private Key RSA valid untuk penandatanganan RSA-SHA256 di server
 const PRIVATE_KEY = process.env.PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3w9r5Z9v8h7G6
 f5E4d3C2b1A0z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1g0f9e8d7c6b5a4
@@ -82,7 +81,6 @@ async function initDB(sql) {
   }
 }
 
-// Helper logika aktivasi key & penandatanganan RSA-SHA256 (Standard Base64)
 async function handleLicenseActivation(req, res) {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
@@ -150,13 +148,13 @@ async function handleLicenseActivation(req, res) {
       min_app_version: "2.0.8"
     };
 
-    // Menggunakan Standard Base64 (dengan padding & karakter standar) agar cocok dengan decodeUrl(..., 0) di APK
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
+    // Bersihkan newline dari base64 string
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/[\r\n]+/g, '');
     
     const sign = crypto.createSign('SHA256');
     sign.update(base64Data);
     sign.end();
-    const signature = sign.sign(PRIVATE_KEY, 'base64');
+    const signature = sign.sign(PRIVATE_KEY, 'base64').replace(/[\r\n]+/g, '');
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Connection', 'close');
@@ -404,7 +402,6 @@ loadKeys();
 </html>`);
 });
 
-// ADMIN ROUTES
 app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -523,12 +520,10 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// AKTIVASI LICENSE: /api/v1/license.php, /v1/license.php, dan /api/license sebagai alias
 app.post('/api/v1/license.php', handleLicenseActivation);
 app.post('/v1/license.php', handleLicenseActivation);
 app.post('/api/license', handleLicenseActivation);
 
-// ENDPOINT DOWNLOAD LIBRARY: GET /api/v1/library.php
 app.get('/api/v1/library.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
@@ -556,7 +551,6 @@ app.get('/api/v1/library.php', async (req, res) => {
   }
 });
 
-// STATUS / REFRESH SESSION: GET /api/v1/status.php
 app.get('/api/v1/status.php', async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Connection', 'close');
@@ -642,12 +636,13 @@ app.get('/api/v1/status.php', async (req, res) => {
       min_app_version: minAppVersion
     };
 
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
+    // Bersihkan newline dari base64 string
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/[\r\n]+/g, '');
     
     const sign = crypto.createSign('SHA256');
     sign.update(base64Data);
     sign.end();
-    const signature = sign.sign(PRIVATE_KEY, 'base64');
+    const signature = sign.sign(PRIVATE_KEY, 'base64').replace(/[\r\n]+/g, '');
 
     return res.status(200).json({ ok: true, data: base64Data, signature: signature });
   } catch (err) {
