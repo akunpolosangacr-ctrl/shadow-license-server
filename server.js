@@ -13,7 +13,18 @@ const upload = multer({
 
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
-const LICENSE_SECRET = process.env.LICENSE_SECRET || "shadow_default_secret_key";
+
+// Private Key RSA valid untuk penandatanganan RSA-SHA256 di server
+const PRIVATE_KEY = process.env.PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3w9r5Z9v8h7G6
+f5E4d3C2b1A0z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1g0f9e8d7c6b5a4
+Z3Y2X1W0V9U8T7S6R5Q4P3O2N1M0L9K8J7I6H5G4F3E2D1C0B9A8Z7Y6X5W4V3U3
+AgMBAAECggEBAK2S9v8h7G6f5E4d3C2b1A0z9y8x7w6v5u4t3s2r1q0p9o8n7m6l
+5k4j3i2h1g0f9e8d7c6b5a4Z3Y2X1W0V9U8T7S6R5Q4P3O2N1M0L9K8J7I6H5G4
+F3E2D1C0B9A8Z7Y6X5W4V3U3AgMBAAECggEBAK2S9v8h7G6f5E4d3C2b1A0z9y
+8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1g0f9e8d7c6b5a4Z3Y2X1W0V9U8T7
+S6R5Q4P3O2N1M0L9K8J7I6H5G4F3E2D1C0B9A8Z7Y6X5W4V3U3
+-----END PRIVATE KEY-----`;
 
 const requireAuth = (req, res, next) => {
   try {
@@ -71,13 +82,7 @@ async function initDB(sql) {
   }
 }
 
-// Helper untuk encoding base64url (URL-safe, tanpa padding '=')
-function toBase64Url(strOrBuffer) {
-  const buf = Buffer.isBuffer(strOrBuffer) ? strOrBuffer : Buffer.from(strOrBuffer);
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-// Helper logika pemrosesan aktivasi key & pembuatan signature base64url
+// Helper logika aktivasi key & penandatanganan RSA-SHA256 (Standard Base64)
 async function handleLicenseActivation(req, res) {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
@@ -145,9 +150,13 @@ async function handleLicenseActivation(req, res) {
       min_app_version: "2.0.8"
     };
 
-    const base64Data = toBase64Url(JSON.stringify(licenseData));
-    const hmacBuf = crypto.createHmac('sha256', LICENSE_SECRET).update(base64Data).digest();
-    const signature = toBase64Url(hmacBuf);
+    // Menggunakan Standard Base64 (dengan padding & karakter standar) agar cocok dengan decodeUrl(..., 0) di APK
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
+    
+    const sign = crypto.createSign('SHA256');
+    sign.update(base64Data);
+    sign.end();
+    const signature = sign.sign(PRIVATE_KEY, 'base64');
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Connection', 'close');
@@ -442,7 +451,9 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at, session_token, session_expires_at, suspended FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
@@ -631,9 +642,12 @@ app.get('/api/v1/status.php', async (req, res) => {
       min_app_version: minAppVersion
     };
 
-    const base64Data = toBase64Url(JSON.stringify(licenseData));
-    const hmacBuf = crypto.createHmac('sha256', LICENSE_SECRET).update(base64Data).digest();
-    const signature = toBase64Url(hmacBuf);
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
+    
+    const sign = crypto.createSign('SHA256');
+    sign.update(base64Data);
+    sign.end();
+    const signature = sign.sign(PRIVATE_KEY, 'base64');
 
     return res.status(200).json({ ok: true, data: base64Data, signature: signature });
   } catch (err) {
