@@ -7,7 +7,21 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.9.0",
-    "express": "^4.19.2"
-  }
+    "@neondatabase/serverless": "^0.9.5",
+    "express": "^4.22.3",
+    "json-server": "^1.0.0-beta.15",
+    "multer": "^2.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akunpolosangacr-ctrl/shadow-license-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/akunpolosangacr-ctrl/shadow-license-server/issues"
+  },
+  "homepage": "https://github.com/akunpolosangacr-ctrl/shadow-license-server#readme"
 }
