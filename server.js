@@ -58,9 +58,13 @@ async function initDB(sql) {
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
   
+  // Penambahan kolom baru dengan try/catch aman (idempoten)
   try {
     await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
     await sql`ALTER TABLE licenses ALTER COLUMN device_id TYPE TEXT`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS session_token TEXT DEFAULT ''`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ NULL`;
+    await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS suspended BOOLEAN DEFAULT FALSE`;
     await sql`ALTER TABLE runtime_files ALTER COLUMN filename TYPE TEXT`;
     await sql`ALTER TABLE runtime_files ALTER COLUMN file_data TYPE TEXT`;
   } catch (e) {
@@ -68,6 +72,96 @@ async function initDB(sql) {
   }
 }
 
+// Helper untuk encoding base64url (URL-safe, tanpa padding '=')
+function toBase64Url(strOrBuffer) {
+  const buf = Buffer.isBuffer(strOrBuffer) ? strOrBuffer : Buffer.from(strOrBuffer);
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Helper logika pemrosesan aktivasi key & pembuatan signature base64url
+async function handleLicenseActivation(req, res) {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+
+    const { license_key, device_id } = req.body;
+    if (!license_key) return res.json({ ok: false, message: "Key wajib diisi!" });
+
+    const result = await sql`SELECT * FROM licenses WHERE license_key = ${String(license_key).trim()}`;
+    if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
+
+    const record = result[0];
+    const nowMs = Date.now();
+
+    if (record.suspended) {
+      return res.json({ ok: false, message: "Acesso suspenso pelo servidor." });
+    }
+
+    if (record.expires_at && nowMs > new Date(record.expires_at).getTime()) {
+      return res.json({ ok: false, message: "Key sudah kedaluwarsa!" });
+    }
+
+    const clientDevice = device_id || "unknown";
+    const maxDevs = record.max_devices || 1;
+    let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    if (!boundDevices.includes(clientDevice)) {
+      if (boundDevices.length < maxDevs) {
+        boundDevices.push(clientDevice);
+        await sql`UPDATE licenses SET device_id = ${boundDevices.join(',')} WHERE id = ${record.id}`;
+      } else {
+        return res.json({ ok: false, message: `Slot device penuh! (${boundDevices.length}/${maxDevs})` });
+      }
+    }
+
+    const serverTimeSec = Math.floor(nowMs / 1000);
+    const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
+    
+    // Generate session token baru & set session_expires_at
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionExpiresAt = record.expires_at ? new Date(record.expires_at) : new Date(nowMs + 10 * 60 * 1000);
+    const sessionExpiresSec = Math.floor(sessionExpiresAt.getTime() / 1000);
+
+    await sql`UPDATE licenses SET session_token = ${sessionToken}, session_expires_at = ${sessionExpiresAt.toISOString()} WHERE id = ${record.id}`;
+
+    const licenseIdHex = crypto.createHash('md5').update(record.license_key).digest('hex').toUpperCase();
+
+    const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
+
+    const hostName = req.get('host');
+    const libraryUrl = `https://${hostName}/api/v1/library.php?version=2.0.51`;
+
+    const licenseData = {
+      license_id: licenseIdHex,
+      plan: "Correção de acesso",
+      product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
+      device_id: clientDevice,
+      expires_at: expiresTimestampSec,
+      server_time: serverTimeSec,
+      session_token: sessionToken,
+      session_expires_at: sessionExpiresSec,
+      lib_enabled: true,
+      library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: "2.0.8", url: libraryUrl },
+      min_app_version: "2.0.8"
+    };
+
+    const base64Data = toBase64Url(JSON.stringify(licenseData));
+    const hmacBuf = crypto.createHmac('sha256', LICENSE_SECRET).update(base64Data).digest();
+    const signature = toBase64Url(hmacBuf);
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Connection', 'close');
+    return res.status(200).json({ ok: true, data: base64Data, signature: signature });
+  } catch (err) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Connection', 'close');
+    return res.status(500).json({ ok: false, message: "Server Error: " + err.message });
+  }
+}
+
+// ADMIN PANEL HTML
 app.get('/', requireAuth, (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -77,21 +171,22 @@ app.get('/', requireAuth, (req, res) => {
 <title>Shadow License Admin Panel</title>
 <style>
   body { background: #0f172a; color: #f8fafc; font-family: monospace; padding: 20px; }
-  .container { max-width: 650px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+  .container { max-width: 750px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
   h2 { color: #38bdf8; text-align: center; }
   .card { background: #0f172a; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #334155; }
   input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px; box-sizing: border-box; }
-  button { background: #0284c7; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; width: 100%; }
+  button { background: #0284c7; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; width: 100%; }
   button:hover { background: #0369a1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-  th, td { border: 1px solid #334155; padding: 8px; text-align: left; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+  th, td { border: 1px solid #334155; padding: 6px; text-align: left; }
   th { background: #1e293b; color: #38bdf8; }
   .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-  .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 11px; }
-  .btn-delete:hover { background: #dc2626; }
-  .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 11px; margin-bottom: 4px; }
-  .btn-reset:hover { background: #ca8a04; }
-  .device-debug { font-size: 10px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
+  .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
+  .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
+  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
+  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
+  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
+  .device-debug { font-size: 9px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
   .lib-info-box { background: #111827; padding: 10px; border-radius: 4px; border: 1px solid #374151; font-size: 12px; margin-bottom: 10px; }
 </style>
 </head>
@@ -137,10 +232,10 @@ app.get('/', requireAuth, (req, res) => {
     <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Daftar Key & Device Terdaftar</h3>
     <table>
       <thead>
-        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Aksi</th></tr>
+        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Sesi & Status</th><th>Aksi</th></tr>
       </thead>
       <tbody id="keyList">
-        <tr><td colspan="4" style="text-align: center; color: #888;">Memuat data...</td></tr>
+        <tr><td colspan="5" style="text-align: center; color: #888;">Memuat data...</td></tr>
       </tbody>
     </table>
   </div>
@@ -188,7 +283,7 @@ async function loadKeys() {
     const tbody = document.getElementById('keyList');
     if(res.ok && data.ok && data.licenses) {
       if(data.licenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
         return;
       }
       tbody.innerHTML = data.licenses.map(item => {
@@ -196,18 +291,35 @@ async function loadKeys() {
         const maxDev = item.max_devices || 1;
         const isFull = devices.length >= maxDev;
         const badgeColor = isFull ? '#ef4444' : '#38bdf8';
-        let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Device</span>\`;
+        let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Dev</span>\`;
         if (devices.length > 0) {
           deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
         } else {
-          deviceHtml += '<div style="font-size: 10px; color: #666; margin-top: 2px;">Belum ada device</div>';
+          deviceHtml += '<div style="font-size: 9px; color: #666; margin-top: 2px;">Belum ada device</div>';
         }
+
+        let sessionStatus = '<span style="color: #10b981;">Aktif / Valid</span>';
+        if (item.suspended) {
+          sessionStatus = '<span style="color: #ef4444; font-weight: bold;">SUSPENDED</span>';
+        } else if (!item.session_token) {
+          sessionStatus = '<span style="color: #888;">Tidak ada sesi</span>';
+        } else if (item.session_expires_at && new Date() > new Date(item.session_expires_at)) {
+          sessionStatus = '<span style="color: #eab308;">Sesi Kedaluwarsa</span>';
+        }
+
+        const suspendBtn = item.suspended 
+          ? \`<button class="btn-unsuspend" onclick="toggleSuspend(\${item.id}, false)">Unsuspend</button>\`
+          : \`<button class="btn-suspend" onclick="toggleSuspend(\${item.id}, true)">Suspend</button>\`;
+
         return \`<tr>
           <td style="font-family: monospace; color: #38bdf8; font-weight: bold;">\${item.license_key}</td>
-          <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Menit' : 'Hari'}</td>
+          <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Min' : 'Hari'}</td>
           <td>\${deviceHtml}</td>
+          <td><div>\${sessionStatus}</div><div style="font-size:9px; color:#94a3b8; word-break:break-all;">Token: \${item.session_token ? item.session_token.substring(0,10)+'...' : '-'}</div></td>
           <td>
-            <button class="btn-reset" onclick="resetDevice(\${item.id})">Reset</button><br>
+            \${suspendBtn}<br>
+            <button class="btn-session" onclick="resetSession(\${item.id})">Reset Sesi</button><br>
+            <button class="btn-reset" onclick="resetDevice(\${item.id})">Reset Dev</button><br>
             <button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button>
           </td>
         </tr>\`;
@@ -224,6 +336,19 @@ async function deleteKey(id) {
 async function resetDevice(id) {
   if(!confirm('Reset Device ID?')) return;
   const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const data = await res.json();
+  if(data.ok) loadKeys(); else alert('Gagal');
+}
+async function resetSession(id) {
+  if(!confirm('Reset Sesi untuk key ini?')) return;
+  const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const data = await res.json();
+  if(data.ok) loadKeys(); else alert('Gagal');
+}
+async function toggleSuspend(id, suspend) {
+  if(!confirm(suspend ? 'Suspend key ini?' : 'Unsuspend key ini?')) return;
+  const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
+  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   const data = await res.json();
   if(data.ok) loadKeys(); else alert('Gagal');
 }
@@ -270,6 +395,7 @@ loadKeys();
 </html>`);
 });
 
+// ADMIN ROUTES
 app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -309,30 +435,12 @@ app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-app.get('/api/v1/library.php', async (req, res) => {
-  try {
-    if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
-    const sql = neon(process.env.DATABASE_URL);
-    await initDB(sql);
-    const files = await sql`SELECT file_data, filename FROM runtime_files ORDER BY id DESC LIMIT 1`;
-    if (files.length === 0) return res.status(404).send("Library not found.");
-    const base64Data = files[0].file_data;
-    if (!base64Data) return res.status(404).send("Data empty.");
-    const fileBuffer = Buffer.from(base64Data, 'base64');
-    const filename = files[0].filename || "libshadowcore.so";
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', fileBuffer.length);
-    return res.end(fileBuffer);
-  } catch (err) { res.status(500).send("Server Error: " + err.message); }
-});
-
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
-    const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
+    const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at, session_token, session_expires_at, suspended FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
@@ -357,6 +465,36 @@ app.post('/api/admin/reset-device', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
+app.post('/api/admin/reset-session', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    const { id } = req.body;
+    await sql`UPDATE licenses SET session_token = '', session_expires_at = NULL WHERE id = ${id}`;
+    res.json({ ok: true, message: "Sesi berhasil di-reset!" });
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+});
+
+app.post('/api/admin/suspend', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    const { id } = req.body;
+    await sql`UPDATE licenses SET suspended = TRUE WHERE id = ${id}`;
+    res.json({ ok: true, message: "Key disuspend!" });
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+});
+
+app.post('/api/admin/unsuspend', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    const { id } = req.body;
+    await sql`UPDATE licenses SET suspended = FALSE WHERE id = ${id}`;
+    res.json({ ok: true, message: "Key di-unsuspend!" });
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+});
+
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -369,43 +507,114 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     const maxDev = parseInt(max_devices) || 1;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (durationUnit === 'minutes' ? duration * 60 * 1000 : duration * 24 * 60 * 60 * 1000));
-    await sql`INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})`;
+    await sql`INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at, suspended) VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()}, FALSE)`;
     res.json({ ok: true, message: `Key dibuat!` });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-app.post('/api/license', async (req, res) => {
+// AKTIVASI LICENSE: POST /api/license & alias POST /api/v1/license.php
+app.post('/api/license', handleLicenseActivation);
+app.post('/api/v1/license.php', handleLicenseActivation);
+
+// ENDPOINT DOWNLOAD LIBRARY: GET /api/v1/library.php
+app.get('/api/v1/library.php', async (req, res) => {
   try {
-    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
-    const { license_key, device_id } = req.body;
-    if (!license_key) return res.json({ ok: false, message: "Key wajib diisi!" });
-    const result = await sql`SELECT * FROM licenses WHERE license_key = ${String(license_key).trim()}`;
-    if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
+    const files = await sql`SELECT file_data, filename FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    if (files.length === 0) {
+      return res.status(404).send("Library file not found on server.");
+    }
+    const base64Data = files[0].file_data;
+    if (!base64Data) {
+      return res.status(404).send("Library data is empty.");
+    }
+    const fileBuffer = Buffer.from(base64Data, 'base64');
+    const filename = files[0].filename || "libshadowcore.so";
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    res.setHeader('Connection', 'close');
+    return res.end(fileBuffer);
+  } catch (err) {
+    res.setHeader('Connection', 'close');
+    res.status(500).send("Server Error: " + err.message);
+  }
+});
+
+// STATUS / REFRESH SESSION: GET /api/v1/status.php
+app.get('/api/v1/status.php', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Connection', 'close');
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    }
+
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(200).json({ ok: false, message: "Sesi tidak valid." });
+    }
+
+    const sessionToken = authHeader.substring(7).trim();
+    const deviceId = req.headers['x-device-id'] || 'unknown';
+    const appVersion = req.query.app_version || '2.0.8';
+
+    if (!sessionToken) {
+      return res.status(200).json({ ok: false, message: "Sesi tidak valid." });
+    }
+
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+
+    const result = await sql`SELECT * FROM licenses WHERE session_token = ${sessionToken}`;
+    if (result.length === 0) {
+      return res.status(200).json({ ok: false, message: "Sesi kedaluwarsa. Login ulang." });
+    }
+
     const record = result[0];
     const nowMs = Date.now();
+
+    if (record.suspended) {
+      return res.status(200).json({ ok: false, message: "Acesso suspenso pelo servidor." });
+    }
+
+    const boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (!boundDevices.includes(deviceId)) {
+      return res.status(200).json({ ok: false, message: "Licença emitida para outro dispositivo." });
+    }
+
     if (record.expires_at && nowMs > new Date(record.expires_at).getTime()) {
-      return res.json({ ok: false, message: "Key sudah kedaluwarsa!" });
+      return res.status(200).json({ ok: false, message: "Key sudah kedaluwarsa!" });
     }
-    const clientDevice = device_id || "unknown";
-    const maxDevs = record.max_devices || 1;
-    let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
-    if (!boundDevices.includes(clientDevice)) {
-      if (boundDevices.length < maxDevs) {
-        boundDevices.push(clientDevice);
-        await sql`UPDATE licenses SET device_id = ${boundDevices.join(',')} WHERE id = ${record.id}`;
-      } else {
-        return res.json({ ok: false, message: `Slot device penuh! (${boundDevices.length}/${maxDevs})` });
-      }
+
+    if (record.session_expires_at && nowMs > new Date(record.session_expires_at).getTime()) {
+      return res.status(200).json({ ok: false, message: "Sesi kedaluwarsa. Login ulang." });
     }
+
+    // Cek min_app_version opsional
+    const minAppVersion = "2.0.8";
+    if (appVersion < minAppVersion) {
+      return res.status(200).json({ ok: false, message: "Atualize o aplicativo." });
+    }
+
+    // Rotasi Sesi: Buat session_token baru
+    const newSessionToken = crypto.randomBytes(32).toString('hex');
+    const newSessionExpiresAt = record.expires_at ? new Date(record.expires_at) : new Date(nowMs + 10 * 60 * 1000);
+    const newSessionExpiresSec = Math.floor(newSessionExpiresAt.getTime() / 1000);
+
+    await sql`UPDATE licenses SET session_token = ${newSessionToken}, session_expires_at = ${newSessionExpiresAt.toISOString()} WHERE id = ${record.id}`;
+
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
     const licenseIdHex = crypto.createHash('md5').update(record.license_key).digest('hex').toUpperCase();
-    const sessionToken = crypto.randomBytes(32).toString('hex');
+
     const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
     const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
-    
+
     const hostName = req.get('host');
     const libraryUrl = `https://${hostName}/api/v1/library.php?version=2.0.51`;
 
@@ -413,35 +622,23 @@ app.post('/api/license', async (req, res) => {
       license_id: licenseIdHex,
       plan: "Correção de acesso",
       product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
-      device_id: clientDevice,
+      device_id: deviceId,
       expires_at: expiresTimestampSec,
       server_time: serverTimeSec,
-      session_token: sessionToken,
-      session_expires_at: expiresTimestampSec,
+      session_token: newSessionToken,
+      session_expires_at: newSessionExpiresSec,
       lib_enabled: true,
-      library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: "2.0.8", url: libraryUrl },
-      min_app_version: "2.0.8"
+      library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: minAppVersion, url: libraryUrl },
+      min_app_version: minAppVersion
     };
 
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
-    
-    // Menggunakan HMAC-SHA256 untuk tanda tangan, bebas dari error decoder RSA
-    const signature = crypto.createHmac('sha256', LICENSE_SECRET).update(base64Data).digest('base64');
+    const base64Data = toBase64Url(JSON.stringify(licenseData));
+    const hmacBuf = crypto.createHmac('sha256', LICENSE_SECRET).update(base64Data).digest();
+    const signature = toBase64Url(hmacBuf);
 
-    res.json({ ok: true, data: base64Data, signature: signature });
-  } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
-});
-
-app.get('/api/admin/lib-info', requireAuth, async (req, res) => {
-  try {
-    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false });
-    const sql = neon(process.env.DATABASE_URL);
-    await initDB(sql);
-    const files = await sql`SELECT filename, size, sha256 FROM runtime_files ORDER BY id DESC LIMIT 1`;
-    if (files.length === 0) return res.json({ ok: false });
-    res.json({ ok: true, library: files[0] });
+    return res.status(200).json({ ok: true, data: base64Data, signature: signature });
   } catch (err) {
-    res.status(500).json({ ok: false, message: err.message });
+    return res.status(500).json({ ok: false, message: "Server Error: " + err.message });
   }
 });
 
