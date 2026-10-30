@@ -1,11 +1,13 @@
 const express = require('express');
 const { neon } = require('@neondatabase/serverless');
 const crypto = require('crypto');
+const multer = require('multer');
 
 const app = express();
 app.use(express.json());
 
-// Mengambil kredensial admin dari Environment Variables
+const upload = multer({ storage: multer.memoryStorage() });
+
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
@@ -31,7 +33,6 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access Denied: Username atau Password salah!');
 };
 
-// Inisialisasi & Migrasi Aman untuk Kolom Database PostgreSQL
 async function initDB(sql) {
   await sql`CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY,
@@ -51,24 +52,16 @@ async function initDB(sql) {
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`;
   await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`;
 
-  const cols = await sql`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'licenses' AND column_name IN ('created_at', 'expires_at')`;
-
-  for (const col of cols) {
-    const name = col.column_name;
-    if (!['bigint', 'integer', 'smallint'].includes(col.data_type)) continue;
-
-    if (name === 'created_at') {
-      await sql`ALTER TABLE licenses ALTER COLUMN created_at DROP DEFAULT`;
-      await sql`ALTER TABLE licenses ALTER COLUMN created_at TYPE TIMESTAMPTZ USING CASE WHEN created_at IS NULL THEN NULL WHEN created_at > 100000000000 THEN to_timestamp(created_at::double precision / 1000.0) ELSE to_timestamp(created_at::double precision) END`;
-      await sql`ALTER TABLE licenses ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP`;
-    } else {
-      await sql`ALTER TABLE licenses ALTER COLUMN expires_at DROP DEFAULT`;
-      await sql`ALTER TABLE licenses ALTER COLUMN expires_at TYPE TIMESTAMPTZ USING CASE WHEN expires_at IS NULL THEN NULL WHEN expires_at > 100000000000 THEN to_timestamp(expires_at::double precision / 1000.0) ELSE to_timestamp(expires_at::double precision) END`;
-    }
-  }
+  await sql`CREATE TABLE IF NOT EXISTS runtime_files (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(255),
+    file_data BYTEA,
+    sha256 VARCHAR(64),
+    size BIGINT,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+  )`;
 }
 
-// GET / (Admin Panel Interface)
 app.get('/', requireAuth, (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -89,15 +82,24 @@ app.get('/', requireAuth, (req, res) => {
   th { background: #1e293b; color: #38bdf8; }
   .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
   .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 11px; }
-  .btn-delete:hover { background: #dc2626; }
   .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 11px; margin-bottom: 4px; }
-  .btn-reset:hover { background: #ca8a04; }
   .device-debug { font-size: 10px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
 </style>
 </head>
 <body>
 <div class="container">
   <h2>Shadow License Admin</h2>
+  <div class="card">
+    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Manajemen Library APK</h3>
+    <div id="libUrlBox" style="font-size: 11px; margin-bottom: 8px; color: #38bdf8; word-break: break-all;">Library URL: Memuat...</div>
+    <button type="button" onclick="copyLibraryUrl()" style="background: #10b981; margin-bottom: 15px;">📋 Copy URL Library</button>
+    <form id="formUploadLib">
+      <label>Upload File Library (.bin / .so):</label>
+      <input type="file" id="library_file" accept=".bin,.so" required style="margin-bottom: 10px;">
+      <button type="submit" style="background: #8b5cf6;">Upload Library</button>
+    </form>
+    <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+  </div>
   <div class="card">
     <div id="apiUrlBox" style="font-size: 12px; margin-bottom: 10px; color: #38bdf8;">API URL: Memuat...</div>
     <form id="formKey">
@@ -134,7 +136,12 @@ app.get('/', requireAuth, (req, res) => {
   </div>
 </div>
 <script>
+const dynamicLibUrl = window.location.origin + '/api/v1/library.php?version=2.0.51';
+document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
 document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+function copyLibraryUrl() {
+  navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
+}
 function updateDurationLabel() {
   const unit = document.getElementById('duration_unit').value;
   document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
@@ -191,6 +198,25 @@ async function resetDevice(id) {
   const data = await res.json();
   if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
 }
+document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fileInput = document.getElementById('library_file');
+  const uploadMsg = document.getElementById('uploadMsg');
+  if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu!');
+  const formData = new FormData();
+  formData.append('library_file', fileInput.files[0]);
+  uploadMsg.style.color = '#ccc'; uploadMsg.innerText = 'Mengupload file & menghitung SHA256...';
+  try {
+    const res = await fetch('/api/admin/upload-lib', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      uploadMsg.style.color = '#38bdf8'; uploadMsg.innerText = '✅ ' + data.message;
+      fileInput.value = '';
+    } else {
+      uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ ' + (data.message || 'Gagal');
+    }
+  } catch (err) { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ Error jaringan'; }
+});
 document.getElementById('formKey').addEventListener('submit', async (e) => {
   e.preventDefault();
   const key = document.getElementById('license_key').value;
@@ -207,10 +233,9 @@ document.getElementById('formKey').addEventListener('submit', async (e) => {
   const data = await res.json();
   if(res.ok && data.ok) {
     msg.style.color = '#38bdf8'; msg.innerText = '✅ ' + data.message;
-    document.getElementById('license_key').value = '';
-    loadKeys();
+    document.getElementById('license_key').value = ''; loadKeys();
   } else {
-    msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Terjadi kesalahan');
+    msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Gagal');
   }
 });
 loadKeys();
@@ -219,177 +244,136 @@ loadKeys();
 </html>`);
 });
 
-// GET /api/admin/list
+app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    if (!req.file) return res.status(400).json({ ok: false, message: "Tidak ada file!" });
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+    const fileBuffer = req.file.buffer;
+    const filename = req.file.originalname;
+    const size = req.file.size;
+    const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    await sql`DELETE FROM runtime_files`;
+    await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${fileBuffer}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
+    res.json({ ok: true, message: `Library di-upload! SHA256: ${sha256.substring(0, 16)}...`, sha256, size });
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+});
+
+app.get('/api/v1/library.php', async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+    const files = await sql`SELECT file_data FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    if (files.length === 0) return res.status(404).send("Library not found.");
+    let fileBuffer = files[0].file_data;
+    if (typeof fileBuffer === 'string') {
+      fileBuffer = fileBuffer.startsWith('\\x') ? Buffer.from(fileBuffer.slice(2), 'hex') : Buffer.from(fileBuffer, 'hex');
+    } else if (!Buffer.isBuffer(fileBuffer)) {
+      fileBuffer = Buffer.from(fileBuffer);
+    }
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="libshadowcore.so"');
+    res.send(fileBuffer);
+  } catch (err) { res.status(500).send("Server Error: " + err.message); }
+});
+
 app.get('/api/admin/list', requireAuth, async (req, res) => {
   try {
-    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum dikonfigurasi!" });
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) {
-    res.status(500).json({ ok: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// POST /api/admin/delete
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
-    if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
     await sql`DELETE FROM licenses WHERE id = ${id}`;
-    res.json({ ok: true, message: "Key berhasil dihapus!" });
+    res.json({ ok: true, message: "Key dihapus!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// POST /api/admin/reset-device
 app.post('/api/admin/reset-device', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     const { id } = req.body;
-    if (!id) return res.status(400).json({ ok: false, message: "ID key tidak valid!" });
     await sql`UPDATE licenses SET device_id = '' WHERE id = ${id}`;
-    res.json({ ok: true, message: "Device ID berhasil di-reset!" });
+    res.json({ ok: true, message: "Device di-reset!" });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// POST /api/admin/create
 app.post('/api/admin/create', requireAuth, async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
-
     const { license_key, days_valid, unit, max_devices } = req.body;
-    if (!license_key || typeof license_key !== 'string' || license_key.trim() === '') {
-      return res.status(400).json({ ok: false, message: "License key wajib diisi!" });
-    }
     const duration = parseInt(days_valid);
-    if (isNaN(duration) || duration <= 0) {
-      return res.status(400).json({ ok: false, message: "Durasi harus angka positif!" });
-    }
     const durationUnit = unit === 'minutes' ? 'minutes' : 'days';
     const maxDev = parseInt(max_devices) || 1;
-
-    const existing = await sql`SELECT id FROM licenses WHERE license_key = ${license_key.trim()}`;
-    if (existing.length > 0) {
-      return res.status(400).json({ ok: false, message: "License key sudah terdaftar di database!" });
-    }
-
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (durationUnit === 'minutes' ? duration * 60 * 1000 : duration * 24 * 60 * 60 * 1000));
-    
     await sql`INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})`;
-    
-    res.json({ ok: true, message: `Key berhasil dibuat (${duration} ${durationUnit === 'minutes' ? 'menit' : 'hari'}, Max ${maxDev} Device)!` });
-  } catch (err) {
-    res.status(500).json({ ok: false, message: err.message });
-  }
+    res.json({ ok: true, message: `Key dibuat!` });
+  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// POST /api/license (Validasi Lisensi & Binding Device dengan Struktur & Signature Asli)
 app.post('/api/license', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
-
     const { license_key, device_id } = req.body;
-    if (!license_key) return res.json({ ok: false, message: "License key wajib diisi!" });
-
+    if (!license_key) return res.json({ ok: false, message: "Key wajib diisi!" });
     const result = await sql`SELECT * FROM licenses WHERE license_key = ${license_key}`;
     if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
-
     const record = result[0];
     const nowMs = Date.now();
-
-    // 1. Cek Apakah Key Expired
-    if (record.expires_at) {
-      const expiresMs = new Date(record.expires_at).getTime();
-      if (nowMs > expiresMs) {
-        return res.json({ ok: false, message: "License key sudah kedaluwarsa (expired)!" });
-      }
+    if (record.expires_at && nowMs > new Date(record.expires_at).getTime()) {
+      return res.json({ ok: false, message: "Key sudah kedaluwarsa!" });
     }
-
-    // 2. Validasi Device Slot
     const clientDevice = device_id || "unknown";
     const maxDevs = record.max_devices || 1;
     let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
-
     if (!boundDevices.includes(clientDevice)) {
       if (boundDevices.length < maxDevs) {
         boundDevices.push(clientDevice);
-        const newDeviceStr = boundDevices.join(',');
-        await sql`UPDATE licenses SET device_id = ${newDeviceStr} WHERE id = ${record.id}`;
+        await sql`UPDATE licenses SET device_id = ${boundDevices.join(',')} WHERE id = ${record.id}`;
       } else {
-        return res.json({ 
-          ok: false, 
-          message: `Slot device penuh! (${boundDevices.length}/${maxDevs} device terdaftar). Reset device di admin panel jika ingin mengganti perangkat.` 
-        });
+        return res.json({ ok: false, message: `Slot device penuh! (${boundDevices.length}/${maxDevs})` });
       }
     }
-
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
-
-    // Generate license_id format Hex konsisten
     const licenseIdHex = crypto.createHash('md5').update(record.license_key).digest('hex').toUpperCase();
-    
-    // Generate session token 64 karakter hex acak
     const sessionToken = crypto.randomBytes(32).toString('hex');
-
+    const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
+    const libraryUrl = `${req.protocol}://${req.get('host')}/api/v1/library.php?version=2.0.51`;
     const licenseData = {
       license_id: licenseIdHex,
       plan: "Correção de acesso",
-      product: {
-        code: "rio-rise",
-        name: "Shadow Rio Rise",
-        game: "Rio Rise"
-      },
+      product: { code: "rio-rise", name: "Shadow Rio Rise", game: "Rio Rise" },
       device_id: clientDevice,
       expires_at: expiresTimestampSec,
       server_time: serverTimeSec,
       session_token: sessionToken,
       session_expires_at: expiresTimestampSec,
       lib_enabled: true,
-      library: {
-        version: "2.0.47",
-        sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0",
-        size: 926984,
-        min_app_version: "2.0.8",
-        url: "https://shadowsystems.shop/api/v1/library.php?version=2.0.47"
-      },
+      library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: "2.0.8", url: libraryUrl },
       min_app_version: "2.0.8"
     };
-
-    // Encode Base64 URL-safe (tanpa padding '=')
-    const jsonString = JSON.stringify(licenseData);
-    const base64Data = Buffer.from(jsonString).toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    // HMAC Signature Generation
-    const secretKey = process.env.LICENSE_SECRET || 'shadow_default_secret_key';
-    const signature = crypto.createHmac('sha256', secretKey)
-      .update(base64Data)
-      .digest('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    res.json({ 
-      ok: true, 
-      data: base64Data, 
-      signature: signature 
-    });
-
-  } catch (err) { 
-    res.status(500).json({ ok: false, message: "Server Error: " + err.message }); 
-  }
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const signature = crypto.createHmac('sha256', process.env.LICENSE_SECRET || 'shadow_default_secret_key').update(base64Data).digest('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    res.json({ ok: true, data: base64Data, signature: signature });
+  } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
 });
 
 module.exports = app;
