@@ -50,16 +50,22 @@ async function initDB(sql) {
 
   await sql`CREATE TABLE IF NOT EXISTS runtime_files (
     id SERIAL PRIMARY KEY,
-    filename VARCHAR(255),
+    filename TEXT,
     file_data TEXT,
     sha256 VARCHAR(64),
     size BIGINT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
   
-  // Paksa ubah ke TEXT jika tabel sebelumnya kadung VARCHAR(255)
-  await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
-  await sql`ALTER TABLE runtime_files ALTER COLUMN file_data TYPE TEXT`;
+  // Paksa ubah semua kolom string ke TEXT agar bebas dari limit 255 karakter
+  try {
+    await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
+    await sql`ALTER TABLE licenses ALTER COLUMN device_id TYPE TEXT`;
+    await sql`ALTER TABLE runtime_files ALTER COLUMN filename TYPE TEXT`;
+    await sql`ALTER TABLE runtime_files ALTER COLUMN file_data TYPE TEXT`;
+  } catch (e) {
+    console.log("Alter notice:", e.message);
+  }
 }
 
 app.get('/', requireAuth, (req, res) => {
