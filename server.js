@@ -58,7 +58,6 @@ async function initDB(sql) {
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
   
-  // Penambahan kolom baru dengan try/catch aman (idempoten)
   try {
     await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
     await sql`ALTER TABLE licenses ALTER COLUMN device_id TYPE TEXT`;
@@ -118,7 +117,6 @@ async function handleLicenseActivation(req, res) {
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
     
-    // Generate session token baru & set session_expires_at
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const sessionExpiresAt = record.expires_at ? new Date(record.expires_at) : new Date(nowMs + 10 * 60 * 1000);
     const sessionExpiresSec = Math.floor(sessionExpiresAt.getTime() / 1000);
@@ -242,8 +240,10 @@ app.get('/', requireAuth, (req, res) => {
 </div>
 <script>
 const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
+const dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
 document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
-document.getElementById('apiUrlBox').innerText = 'API URL: ' + 'https://' + window.location.host + '/api/license';
+document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
+
 function copyLibraryUrl() {
   navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
 }
@@ -512,9 +512,10 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
 });
 
-// AKTIVASI LICENSE: POST /api/license & alias POST /api/v1/license.php
-app.post('/api/license', handleLicenseActivation);
+// AKTIVASI LICENSE: /api/v1/license.php, /v1/license.php, dan /api/license sebagai alias
 app.post('/api/v1/license.php', handleLicenseActivation);
+app.post('/v1/license.php', handleLicenseActivation);
+app.post('/api/license', handleLicenseActivation);
 
 // ENDPOINT DOWNLOAD LIBRARY: GET /api/v1/library.php
 app.get('/api/v1/library.php', async (req, res) => {
@@ -595,13 +596,11 @@ app.get('/api/v1/status.php', async (req, res) => {
       return res.status(200).json({ ok: false, message: "Sesi kedaluwarsa. Login ulang." });
     }
 
-    // Cek min_app_version opsional
     const minAppVersion = "2.0.8";
     if (appVersion < minAppVersion) {
       return res.status(200).json({ ok: false, message: "Atualize o aplicativo." });
     }
 
-    // Rotasi Sesi: Buat session_token baru
     const newSessionToken = crypto.randomBytes(32).toString('hex');
     const newSessionExpiresAt = record.expires_at ? new Date(record.expires_at) : new Date(nowMs + 10 * 60 * 1000);
     const newSessionExpiresSec = Math.floor(newSessionExpiresAt.getTime() / 1000);
