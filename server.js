@@ -57,7 +57,6 @@ async function initDB(sql) {
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
   
-  // Paksa ubah semua kolom string ke TEXT agar bebas dari limit 255 karakter
   try {
     await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
     await sql`ALTER TABLE licenses ALTER COLUMN device_id TYPE TEXT`;
@@ -146,9 +145,9 @@ app.get('/', requireAuth, (req, res) => {
   </div>
 </div>
 <script>
-const dynamicLibUrl = window.location.origin + '/api/v1/library.php?version=2.0.51';
+const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
 document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
-document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+document.getElementById('apiUrlBox').innerText = 'API URL: ' + 'https://' + window.location.host + '/api/license';
 function copyLibraryUrl() {
   navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
 }
@@ -295,7 +294,9 @@ app.get('/api/admin/lib-info', requireAuth, async (req, res) => {
     const files = await sql`SELECT filename, size, sha256 FROM runtime_files ORDER BY id DESC LIMIT 1`;
     if (files.length === 0) return res.json({ ok: false });
     res.json({ ok: true, library: files[0] });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
 app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
@@ -332,7 +333,9 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
@@ -403,7 +406,11 @@ app.post('/api/license', async (req, res) => {
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
     const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
-    const libraryUrl = `${req.protocol}://${req.get('host')}/api/v1/library.php?version=2.0.51`;
+    
+    // Paksa menggunakan HTTPS agar aman dari pemblokiran cleartext traffic di Android / Python
+    const hostName = req.get('host');
+    const libraryUrl = `https://${hostName}/api/v1/library.php?version=2.0.51`;
+
     const licenseData = {
       license_id: licenseIdHex,
       plan: "Correção de acesso",
