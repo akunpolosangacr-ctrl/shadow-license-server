@@ -6,7 +6,10 @@ const multer = require('multer');
 const app = express();
 app.use(express.json());
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 } // Batas max file 20MB
+});
 
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
@@ -45,13 +48,6 @@ async function initDB(sql) {
     expires_at TIMESTAMPTZ NULL
   )`;
 
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS days_valid INT DEFAULT 30`;
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'days'`;
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS max_devices INT DEFAULT 1`;
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''`;
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`;
-  await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`;
-
   await sql`CREATE TABLE IF NOT EXISTS runtime_files (
     id SERIAL PRIMARY KEY,
     filename VARCHAR(255),
@@ -60,6 +56,8 @@ async function initDB(sql) {
     size BIGINT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
+  
+  await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
 }
 
 app.get('/', requireAuth, (req, res) => {
@@ -71,7 +69,7 @@ app.get('/', requireAuth, (req, res) => {
 <title>Shadow License Admin Panel</title>
 <style>
   body { background: #0f172a; color: #f8fafc; font-family: monospace; padding: 20px; }
-  .container { max-width: 600px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+  .container { max-width: 650px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
   h2 { color: #38bdf8; text-align: center; }
   .card { background: #0f172a; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #334155; }
   input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px; box-sizing: border-box; }
@@ -82,24 +80,37 @@ app.get('/', requireAuth, (req, res) => {
   th { background: #1e293b; color: #38bdf8; }
   .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
   .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 11px; }
+  .btn-delete:hover { background: #dc2626; }
   .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 11px; margin-bottom: 4px; }
+  .btn-reset:hover { background: #ca8a04; }
   .device-debug { font-size: 10px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
+  .lib-info-box { background: #111827; padding: 10px; border-radius: 4px; border: 1px solid #374151; font-size: 12px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 <div class="container">
   <h2>Shadow License Admin</h2>
+
+  <!-- CARD MANAJEMEN LIBRARY APK -->
   <div class="card">
-    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Manajemen Library APK</h3>
+    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">📦 Manajemen Library .so / .bin</h3>
     <div id="libUrlBox" style="font-size: 11px; margin-bottom: 8px; color: #38bdf8; word-break: break-all;">Library URL: Memuat...</div>
     <button type="button" onclick="copyLibraryUrl()" style="background: #10b981; margin-bottom: 15px;">📋 Copy URL Library</button>
+    
+    <!-- Status Library Aktif -->
+    <div class="lib-info-box" id="libInfoBox">
+      <div><b>Status Library:</b> Memeriksa database...</div>
+    </div>
+
     <form id="formUploadLib">
-      <label>Upload File Library (.bin / .so):</label>
+      <label>Upload File Library Baru (.bin / .so):</label>
       <input type="file" id="library_file" accept=".bin,.so" required style="margin-bottom: 10px;">
-      <button type="submit" style="background: #8b5cf6;">Upload Library</button>
+      <button type="submit" style="background: #8b5cf6;">🚀 Upload Library ke DB</button>
     </form>
     <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
   </div>
+
+  <!-- CARD BUAT LICENSE KEY -->
   <div class="card">
     <div id="apiUrlBox" style="font-size: 12px; margin-bottom: 10px; color: #38bdf8;">API URL: Memuat...</div>
     <form id="formKey">
@@ -119,10 +130,12 @@ app.get('/', requireAuth, (req, res) => {
       </select>
       <label>Maksimal Device (Max Devices):</label>
       <input type="number" id="max_devices" value="1" min="1" required>
-      <button type="submit">Simpan ke Database</button>
+      <button type="submit">Simpan Key ke Database</button>
     </form>
     <div id="msg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
   </div>
+
+  <!-- CARD DAFTAR KEY -->
   <div class="card">
     <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Daftar Key & Device Terdaftar</h3>
     <table>
@@ -135,23 +148,65 @@ app.get('/', requireAuth, (req, res) => {
     </table>
   </div>
 </div>
+
 <script>
 const dynamicLibUrl = window.location.origin + '/api/v1/library.php?version=2.0.51';
 document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
 document.getElementById('apiUrlBox').innerText = 'API URL: ' + window.location.origin + '/api/license';
+
 function copyLibraryUrl() {
   navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
 }
+
 function updateDurationLabel() {
   const unit = document.getElementById('duration_unit').value;
   document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
 }
+
 function generateKey() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let res = 'RIO-';
   for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
   document.getElementById('license_key').value = res;
 }
+
+async function loadLibraryInfo() {
+  try {
+    const res = await fetch('/api/admin/lib-info');
+    const data = await res.json();
+    const box = document.getElementById('libInfoBox');
+    if(res.ok && data.ok && data.library) {
+      const lib = data.library;
+      box.innerHTML = \`
+        <div>📁 <b>File:</b> \${lib.filename}</div>
+        <div>📏 <b>Ukuran:</b> \${lib.size} bytes</div>
+        <div>🔑 <b>SHA256:</b> <span style="color: #38bdf8;">\${lib.sha256}</span></div>
+        <div style="margin-top: 8px;">
+          <button class="btn-delete" onclick="deleteLibrary()">Hapus Library Ini</button>
+        </div>
+      \`;
+    } else {
+      box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
+    }
+  } catch (err) {
+    document.getElementById('libInfoBox').innerText = 'Gagal memuat info library.';
+  }
+}
+
+async function deleteLibrary() {
+  if(!confirm('Yakin ingin menghapus library aktif dari database?')) return;
+  try {
+    const res = await fetch('/api/admin/delete-lib', { method: 'POST' });
+    const data = await res.json();
+    if(data.ok) {
+      alert('Library berhasil dihapus!');
+      loadLibraryInfo();
+    } else {
+      alert('Gagal: ' + data.message);
+    }
+  } catch(err) { alert('Terjadi kesalahan jaringan'); }
+}
+
 async function loadKeys() {
   try {
     const res = await fetch('/api/admin/list');
@@ -186,18 +241,21 @@ async function loadKeys() {
     }
   } catch(err) { console.error(err); }
 }
+
 async function deleteKey(id) {
   if(!confirm('Yakin ingin menghapus key ini?')) return;
   const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   const data = await res.json();
   if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
 }
+
 async function resetDevice(id) {
   if(!confirm('Reset Device ID untuk key ini?')) return;
   const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   const data = await res.json();
   if(data.ok) loadKeys(); else alert('Gagal: ' + data.message);
 }
+
 document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fileInput = document.getElementById('library_file');
@@ -212,11 +270,13 @@ document.getElementById('formUploadLib').addEventListener('submit', async (e) =>
     if (res.ok && data.ok) {
       uploadMsg.style.color = '#38bdf8'; uploadMsg.innerText = '✅ ' + data.message;
       fileInput.value = '';
+      loadLibraryInfo();
     } else {
       uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ ' + (data.message || 'Gagal');
     }
   } catch (err) { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ Error jaringan'; }
 });
+
 document.getElementById('formKey').addEventListener('submit', async (e) => {
   e.preventDefault();
   const key = document.getElementById('license_key').value;
@@ -238,45 +298,103 @@ document.getElementById('formKey').addEventListener('submit', async (e) => {
     msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Gagal');
   }
 });
+
+loadLibraryInfo();
 loadKeys();
 </script>
 </body>
 </html>`);
 });
 
+// 1. ENDPOINT UPLOAD LIBRARY (BYTEA Neon)
 app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
-    if (!req.file) return res.status(400).json({ ok: false, message: "Tidak ada file!" });
+    if (!req.file) return res.status(400).json({ ok: false, message: "Tidak ada file yang diupload!" });
+    
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
+
     const fileBuffer = req.file.buffer;
     const filename = req.file.originalname;
-    const size = req.file.size;
+    const size = fileBuffer.length;
     const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    // Hapus data lama agar hanya menyimpan 1 file library aktif terbaru di database
     await sql`DELETE FROM runtime_files`;
+    
+    // Simpan buffer asli ke kolom BYTEA Neon
     await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${fileBuffer}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
-    res.json({ ok: true, message: `Library di-upload! SHA256: ${sha256.substring(0, 16)}...`, sha256, size });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+
+    res.json({ ok: true, message: `Library berhasil di-upload! (${size} bytes)`, sha256, size });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
+// INFO LIBRARY AKTIF
+app.get('/api/admin/lib-info', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false });
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+    const files = await sql`SELECT filename, size, sha256 FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    if (files.length === 0) return res.json({ ok: false });
+    res.json({ ok: true, library: files[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// HAPUS LIBRARY
+app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
+    const sql = neon(process.env.DATABASE_URL);
+    await sql`DELETE FROM runtime_files`;
+    res.json({ ok: true, message: "Library berhasil dihapus!" });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// 2. ENDPOINT DOWNLOAD LIBRARY (RAW BINARY FIX)
 app.get('/api/v1/library.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
-    const files = await sql`SELECT file_data FROM runtime_files ORDER BY id DESC LIMIT 1`;
-    if (files.length === 0) return res.status(404).send("Library not found.");
+
+    const files = await sql`SELECT file_data, filename FROM runtime_files ORDER BY id DESC LIMIT 1`;
+    if (files.length === 0) {
+      return res.status(404).send("Library file not found on server.");
+    }
+
     let fileBuffer = files[0].file_data;
+
+    // Konversi aman format BYTEA dari Neon/Postgres ke Node.js Buffer murni
     if (typeof fileBuffer === 'string') {
-      fileBuffer = fileBuffer.startsWith('\\x') ? Buffer.from(fileBuffer.slice(2), 'hex') : Buffer.from(fileBuffer, 'hex');
+      if (fileBuffer.startsWith('\\x')) {
+        fileBuffer = Buffer.from(fileBuffer.slice(2), 'hex');
+      } else {
+        fileBuffer = Buffer.from(fileBuffer, 'hex');
+      }
+    } else if (fileBuffer && typeof fileBuffer === 'object' && fileBuffer.data && Array.isArray(fileBuffer.data)) {
+      fileBuffer = Buffer.from(fileBuffer.data);
     } else if (!Buffer.isBuffer(fileBuffer)) {
       fileBuffer = Buffer.from(fileBuffer);
     }
+
+    const filename = files[0].filename || "libshadowcore.so";
+
+    // Kirim sebagai Raw Binary murni (Bukan JSON!)
     res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename="libshadowcore.so"');
-    res.send(fileBuffer);
-  } catch (err) { res.status(500).send("Server Error: " + err.message); }
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    return res.end(fileBuffer);
+  } catch (err) {
+    res.status(500).send("Server Error: " + err.message);
+  }
 });
 
 app.get('/api/admin/list', requireAuth, async (req, res) => {
@@ -286,7 +404,9 @@ app.get('/api/admin/list', requireAuth, async (req, res) => {
     await initDB(sql);
     const licenses = await sql`SELECT id, license_key, days_valid, unit, max_devices, device_id, expires_at FROM licenses ORDER BY id DESC`;
     res.json({ ok: true, licenses });
-  } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
 });
 
 app.post('/api/admin/delete', requireAuth, async (req, res) => {
@@ -315,11 +435,13 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
     const { license_key, days_valid, unit, max_devices } = req.body;
+    if (!license_key || license_key.trim() === '') return res.status(400).json({ ok: false, message: "Key wajib diisi!" });
     const duration = parseInt(days_valid);
     const durationUnit = unit === 'minutes' ? 'minutes' : 'days';
     const maxDev = parseInt(max_devices) || 1;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (durationUnit === 'minutes' ? duration * 60 * 1000 : duration * 24 * 60 * 60 * 1000));
+    
     await sql`INSERT INTO licenses (license_key, days_valid, unit, max_devices, device_id, created_at, expires_at) VALUES (${license_key.trim()}, ${duration}, ${durationUnit}, ${maxDev}, '', ${now.toISOString()}, ${expiresAt.toISOString()})`;
     res.json({ ok: true, message: `Key dibuat!` });
   } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
@@ -332,16 +454,20 @@ app.post('/api/license', async (req, res) => {
     await initDB(sql);
     const { license_key, device_id } = req.body;
     if (!license_key) return res.json({ ok: false, message: "Key wajib diisi!" });
+    
     const result = await sql`SELECT * FROM licenses WHERE license_key = ${license_key}`;
     if (result.length === 0) return res.json({ ok: false, message: "Key tidak valid!" });
+    
     const record = result[0];
     const nowMs = Date.now();
     if (record.expires_at && nowMs > new Date(record.expires_at).getTime()) {
       return res.json({ ok: false, message: "Key sudah kedaluwarsa!" });
     }
+    
     const clientDevice = device_id || "unknown";
     const maxDevs = record.max_devices || 1;
     let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
+    
     if (!boundDevices.includes(clientDevice)) {
       if (boundDevices.length < maxDevs) {
         boundDevices.push(clientDevice);
@@ -350,13 +476,17 @@ app.post('/api/license', async (req, res) => {
         return res.json({ ok: false, message: `Slot device penuh! (${boundDevices.length}/${maxDevs})` });
       }
     }
+    
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
     const licenseIdHex = crypto.createHash('md5').update(record.license_key).digest('hex').toUpperCase();
     const sessionToken = crypto.randomBytes(32).toString('hex');
+    
     const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
     const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
+    
     const libraryUrl = `${req.protocol}://${req.get('host')}/api/v1/library.php?version=2.0.51`;
+    
     const licenseData = {
       license_id: licenseIdHex,
       plan: "Correção de acesso",
@@ -370,8 +500,10 @@ app.post('/api/license', async (req, res) => {
       library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: "2.0.8", url: libraryUrl },
       min_app_version: "2.0.8"
     };
+    
     const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const signature = crypto.createHmac('sha256', process.env.LICENSE_SECRET || 'shadow_default_secret_key').update(base64Data).digest('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    
     res.json({ ok: true, data: base64Data, signature: signature });
   } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
 });
