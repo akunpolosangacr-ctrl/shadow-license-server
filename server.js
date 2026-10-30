@@ -14,6 +14,13 @@ const upload = multer({
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 
+// Private Key RSA untuk tanda tangan digital (bisa diatur via Environment Variable PRIVATE_KEY di Vercel)
+const PRIVATE_KEY = process.env.PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3w9r5Z9v8h7G6
+f5E4d3C2b1A0z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1g0f9e8d7c6b5a4
+Z3Y2X1W0V9U8T7S6R5Q4P3O2N1M0L9K8J7I6H5G4F3E2D1C0B9A8Z7Y6X5W4V3U3
+-----END PRIVATE KEY-----`;
+
 const requireAuth = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -407,7 +414,6 @@ app.post('/api/license', async (req, res) => {
     const libRows = await sql`SELECT sha256, size FROM runtime_files ORDER BY id DESC LIMIT 1`;
     const libInfo = libRows.length > 0 ? libRows[0] : { sha256: "5726f274b693d2e640625f2c11c4455cac0d2d778381ed0227ae406c860c7fe0", size: 926984 };
     
-    // Paksa menggunakan HTTPS agar aman dari pemblokiran cleartext traffic di Android / Python
     const hostName = req.get('host');
     const libraryUrl = `https://${hostName}/api/v1/library.php?version=2.0.51`;
 
@@ -424,8 +430,15 @@ app.post('/api/license', async (req, res) => {
       library: { version: "2.0.51", sha256: libInfo.sha256, size: Number(libInfo.size), min_app_version: "2.0.8", url: libraryUrl },
       min_app_version: "2.0.8"
     };
-    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    const signature = crypto.createHmac('sha256', process.env.LICENSE_SECRET || 'shadow_default_secret_key').update(base64Data).digest('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    const base64Data = Buffer.from(JSON.stringify(licenseData)).toString('base64');
+    
+    // Perbaikan utama: Menggunakan crypto.createSign('SHA256') dengan privateKey dan format standard Base64
+    const sign = crypto.createSign('SHA256');
+    sign.update(base64Data);
+    sign.end();
+    const signature = sign.sign(PRIVATE_KEY, 'base64');
+
     res.json({ ok: true, data: base64Data, signature: signature });
   } catch (err) { res.status(500).json({ ok: false, message: "Server Error: " + err.message }); }
 });
