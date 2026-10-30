@@ -48,16 +48,19 @@ async function initDB(sql) {
     expires_at TIMESTAMPTZ NULL
   )`;
 
+  // Menggunakan TEXT untuk menyimpan string Base64 agar aman dari korupsi binary serverless
   await sql`CREATE TABLE IF NOT EXISTS runtime_files (
     id SERIAL PRIMARY KEY,
     filename VARCHAR(255),
-    file_data BYTEA,
+    file_data TEXT,
     sha256 VARCHAR(64),
     size BIGINT,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
   )`;
   
   await sql`ALTER TABLE licenses ALTER COLUMN license_key TYPE TEXT`;
+  // Pastikan kolom file_data bertipe TEXT jika tabel sudah terlanjur dibuat
+  await sql`ALTER TABLE runtime_files ALTER COLUMN file_data TYPE TEXT`;
 }
 
 app.get('/', requireAuth, (req, res) => {
@@ -305,7 +308,7 @@ loadKeys();
 </html>`);
 });
 
-// UPLOAD LIBRARY (Ubah Buffer ke Uint8Array agar Neon/Postgres menyimpan raw bytes murni)
+// UPLOAD LIBRARY: Simpan sebagai Base64 String (TEXT) agar 100% aman di Neon Serverless
 app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DATABASE_URL belum diatur!" });
@@ -318,12 +321,12 @@ app.post('/api/admin/upload-lib', requireAuth, upload.single('library_file'), as
     const filename = req.file.originalname;
     const size = fileBuffer.length;
     const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    
+    // Konversi Buffer binary langsung ke string Base64
+    const base64Data = fileBuffer.toString('base64');
 
     await sql`DELETE FROM runtime_files`;
-    
-    // Kirim sebagai Uint8Array agar serverless driver mengenali sebagai binary byte stream
-    const uint8ArrayData = new Uint8Array(fileBuffer);
-    await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${uint8ArrayData}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
+    await sql`INSERT INTO runtime_files (filename, file_data, sha256, size, updated_at) VALUES (${filename}, ${base64Data}, ${sha256}, ${size}, CURRENT_TIMESTAMP)`;
 
     res.json({ ok: true, message: `Library berhasil di-upload! (${size} bytes)`, sha256, size });
   } catch (err) {
@@ -355,7 +358,7 @@ app.post('/api/admin/delete-lib', requireAuth, async (req, res) => {
   }
 });
 
-// DOWNLOAD LIBRARY (FIX UTAMA: Parsing Hex / Buffer / Array dengan akurat agar tidak bengkak jadi JSON)
+// DOWNLOAD LIBRARY: Ambil Base64 dari DB, decode kembali ke Buffer murni, kirim sebagai Raw Binary
 app.get('/api/v1/library.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DATABASE_URL belum diatur!");
@@ -367,25 +370,13 @@ app.get('/api/v1/library.php', async (req, res) => {
       return res.status(404).send("Library file not found on server.");
     }
 
-    let rawData = files[0].file_data;
-    let fileBuffer;
-
-    if (Buffer.isBuffer(rawData)) {
-      fileBuffer = rawData;
-    } else if (rawData instanceof Uint8Array) {
-      fileBuffer = Buffer.from(rawData);
-    } else if (typeof rawData === 'string') {
-      if (rawData.startsWith('\\x')) {
-        fileBuffer = Buffer.from(rawData.slice(2), 'hex');
-      } else {
-        fileBuffer = Buffer.from(rawData, 'hex');
-      }
-    } else if (rawData && typeof rawData === 'object' && rawData.data && Array.isArray(rawData.data)) {
-      fileBuffer = Buffer.from(rawData.data);
-    } else {
-      fileBuffer = Buffer.from(rawData);
+    const base64Data = files[0].file_data;
+    if (!base64Data) {
+      return res.status(404).send("Library data is empty.");
     }
 
+    // Ubah string Base64 kembali menjadi Buffer binary murni dengan ukuran persis sama
+    const fileBuffer = Buffer.from(base64Data, 'base64');
     const filename = files[0].filename || "libshadowcore.so";
 
     res.setHeader('Content-Type', 'application/octet-stream');
