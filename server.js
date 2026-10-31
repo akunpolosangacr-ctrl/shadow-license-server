@@ -410,32 +410,57 @@ app.get('/', requireAuth, (req, res) => {
   .btn-secondary { background: #334155; color: #fff; width: 100%; padding: 10px 14px; font-size: 0.85rem; border-radius: 8px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .btn-secondary:hover { background: #475569; }
 
-  .btn-delete { background: #ef4444; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+  .btn-delete { background: #ef4444; color: #fff; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .btn-delete:hover { background: #dc2626; }
-  .btn-reset { background: #eab308; color: #000; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
-  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
-  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
-  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+  .btn-reset { background: #eab308; color: #000; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-suspend { background: #f97316; color: #fff; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-unsuspend { background: #10b981; color: #fff; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-session { background: #6366f1; color: #fff; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 
-  /* PERBAIKAN URL BOX SUPAYA FULL DAN RAPI DI HP (TANPA GESER) */
   .url-box { background: var(--bg-primary); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.82rem; color: var(--accent); word-break: break-all; overflow-wrap: break-word; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; width: 100%; }
-  
   .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; word-break: break-all; }
 
-  .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
-  th, td { border-bottom: 1px solid var(--border); padding: 12px 10px; text-align: left; }
-  th { background: var(--bg-card); color: var(--accent); font-weight: 600; }
-  tr:last-child td { border-bottom: none; }
+  /* RESPONSIVE CARD STACK UNTUK DAFTAR KEY (TANPA GESER/SCROLL HORIZONTAL DI HP) */
+  .keys-container { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+  .key-item-card { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .key-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .key-title { font-family: monospace; color: var(--accent); font-weight: bold; font-size: 0.95rem; word-break: break-all; }
+  .key-duration { font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
   
-  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
-  .device-debug { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; word-break: break-all; white-space: normal; }
+  .key-details { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+  .key-row-info { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   
-  #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 1000; }
+  .device-list-box { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+  .device-pill { display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.78rem; color: var(--text-main); gap: 6px; }
+  .device-pill-content { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .device-pill-content span { overflow: hidden; text-overflow: ellipsis; }
+  
+  .btn-copy-mini { background: #374151; color: var(--text-main); border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .btn-copy-mini:hover { background: #4b5563; }
+
+  .actions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+  
+  /* CUSTOM MODAL KONFIRMASI MODERN */
+  #customModal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; padding: 16px; }
+  #customModal.show { opacity: 1; pointer-events: auto; }
+  .modal-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 360px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); transform: translateY(10px); transition: transform 0.25s ease; display: flex; flex-direction: column; gap: 16px; text-align: center; }
+  #customModal.show .modal-box { transform: translateY(0); }
+  .modal-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(56, 189, 248, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; margin: 0 auto; }
+  .modal-title { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
+  .modal-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 4px; }
+  .modal-btn { flex: 1; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; border: none; }
+  .modal-btn-cancel { background: #334155; color: #fff; }
+  .modal-btn-cancel:hover { background: #475569; }
+  .modal-btn-confirm { background: var(--accent); color: #000; }
+  .modal-btn-confirm:hover { background: var(--accent-hover); }
+  .modal-btn-confirm.danger { background: #ef4444; color: #fff; }
+  .modal-btn-confirm.danger:hover { background: #dc2626; }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 3000; }
   #toast.show { opacity: 1; }
   #toast.error { background: #ef4444; }
 
-  .actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .spinner-btn { width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -446,7 +471,7 @@ app.get('/', requireAuth, (req, res) => {
     <h2><i data-lucide="shield-check"></i> Shadow Admin</h2>
     <div class="header-actions">
       <span class="badge-version">v2.0.51</span>
-      <button class="btn-logout" onclick="logoutAdmin()"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Logout</button>
+      <button class="btn-logout" onclick="confirmAction('Keluar dari Admin Panel?', logoutAdmin, false)"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Logout</button>
     </div>
   </header>
 
@@ -454,7 +479,7 @@ app.get('/', requireAuth, (req, res) => {
     <div class="card-title"><i data-lucide="box"></i> Manajemen Library .so / .bin</div>
     <div class="url-box">
       <span id="libUrlBox">Library URL: Memuat...</span>
-      <button class="btn-secondary" onclick="copyLibraryUrl()"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL Library</button>
+      <button class="btn-secondary" onclick="copyText(dynamicLibUrl, 'URL Library berhasil disalin!')"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL Library</button>
     </div>
     <div class="lib-info-box" id="libInfoBox"><div><b>Status Library:</b> Memeriksa database...</div></div>
     <form id="formUploadLib">
@@ -471,7 +496,7 @@ app.get('/', requireAuth, (req, res) => {
     <div class="card-title"><i data-lucide="key"></i> Buat License Key Baru</div>
     <div class="url-box">
       <span id="apiUrlBox">API URL: Memuat...</span>
-      <button class="btn-secondary" onclick="copyApiUrl()"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL API</button>
+      <button class="btn-secondary" onclick="copyText(dynamicApiUrl, 'URL API berhasil disalin!')"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL API</button>
     </div>
     <form id="formKey" style="margin-top: 14px;">
       <label>Custom License Key:</label>
@@ -499,15 +524,21 @@ app.get('/', requireAuth, (req, res) => {
 
   <div class="card">
     <div class="card-title"><i data-lucide="list"></i> Daftar Key & Device Terdaftar</div>
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Sesi & Status</th><th>Aksi</th></tr>
-        </thead>
-        <tbody id="keyList">
-          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Memuat data...</td></tr>
-        </tbody>
-      </table>
+    <div class="keys-container" id="keyList">
+      <div style="text-align: center; color: var(--text-muted); padding: 20px;">Memuat data...</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL KONFIRMASI CUSTOM -->
+<div id="customModal">
+  <div class="modal-box">
+    <div class="modal-icon" id="modalIcon"><i data-lucide="help-circle" style="width:24px;height:24px;"></i></div>
+    <div class="modal-title" id="modalTitle">Konfirmasi Aksi</div>
+    <div class="modal-desc" id="modalDesc">Apakah Anda yakin ingin melanjutkan tindakan ini?</div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal()">Batal</button>
+      <button class="modal-btn modal-btn-confirm" id="modalConfirmBtn" onclick="executeModalAction()">Ya, Lanjutkan</button>
     </div>
   </div>
 </div>
@@ -518,6 +549,7 @@ app.get('/', requireAuth, (req, res) => {
   let CSRF_TOKEN = '';
   let dynamicLibUrl = '';
   let dynamicApiUrl = '';
+  let pendingAction = null;
 
   async function fetchCsrf() {
     try {
@@ -536,23 +568,45 @@ app.get('/', requireAuth, (req, res) => {
     setTimeout(() => { t.className = ''; }, 3000);
   }
 
+  function confirmAction(title, callback, isDanger = false) {
+    document.getElementById('modalDesc').innerText = title;
+    const confirmBtn = document.getElementById('modalConfirmBtn');
+    if (isDanger) {
+      confirmBtn.className = 'modal-btn modal-btn-confirm danger';
+    } else {
+      confirmBtn.className = 'modal-btn modal-btn-confirm';
+    }
+    pendingAction = callback;
+    document.getElementById('customModal').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('customModal').classList.remove('show');
+    pendingAction = null;
+  }
+
+  function executeModalAction() {
+    if (typeof pendingAction === 'function') {
+      pendingAction();
+    }
+    closeModal();
+  }
+
   lucide.createIcons();
   dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
   dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
   document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
   document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
 
-  function copyLibraryUrl() {
-    navigator.clipboard.writeText(dynamicLibUrl).then(() => showToast('URL Library berhasil disalin!'));
-  }
-  function copyApiUrl() {
-    navigator.clipboard.writeText(dynamicApiUrl).then(() => showToast('URL API berhasil disalin!'));
+  function copyText(text, successMsg) {
+    navigator.clipboard.writeText(text).then(() => showToast(successMsg));
   }
 
   function updateDurationLabel() {
     const unit = document.getElementById('duration_unit').value;
     document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
   }
+
   function generateKey() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let res = 'RIO-';
@@ -561,7 +615,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function logoutAdmin() {
-    if (!confirm('Yakin ingin keluar dari Admin Panel?')) return;
     try {
       await fetch('/api/admin/logout', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
       window.location.href = '/login';
@@ -577,7 +630,7 @@ app.get('/', requireAuth, (req, res) => {
       const box = document.getElementById('libInfoBox');
       if(res.ok && data.ok && data.library) {
         const lib = data.library;
-        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="deleteLibrary()"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
+        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="confirmAction(\\'Hapus file library ini dari database?\\', deleteLibrary, true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
         lucide.createIcons();
       } else {
         box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
@@ -586,7 +639,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function deleteLibrary() {
-    if(!confirm('Hapus Library?')) return;
     try {
       const res = await fetch('/api/admin/delete-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
       const data = await res.json();
@@ -599,49 +651,70 @@ app.get('/', requireAuth, (req, res) => {
       const res = await fetch('/api/admin/list');
       if (res.status === 401) { window.location.href = '/login'; return; }
       const data = await res.json();
-      const tbody = document.getElementById('keyList');
+      const container = document.getElementById('keyList');
       if(res.ok && data.ok && data.licenses) {
         if(data.licenses.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Belum ada key tersimpan.</td></tr>';
+          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Belum ada key tersimpan.</div>';
           return;
         }
-        tbody.innerHTML = data.licenses.map(item => {
+        container.innerHTML = data.licenses.map(item => {
           const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
           const maxDev = item.max_devices || 1;
           const isFull = devices.length >= maxDev;
           const badgeColor = isFull ? '#ef4444' : '#38bdf8';
-          let deviceHtml = '<span class="badge" style="border: 1px solid ' + badgeColor + '; color: ' + badgeColor + ';"><i data-lucide="smartphone" style="width:10px;height:10px;"></i> ' + devices.length + ' / ' + maxDev + ' Dev</span>';
+          
+          let deviceHtml = '<div style="font-size: 0.8rem; color: var(--text-muted);">Belum ada device terdaftar</div>';
           if (devices.length > 0) {
-            deviceHtml += devices.map(d => '<div class="device-debug">📱 ' + d + '</div>').join('');
-          } else {
-            deviceHtml += '<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Belum ada device</div>';
+            deviceHtml = '<div class="device-list-box">' + devices.map(d => 
+              '<div class="device-pill">' +
+                '<div class="device-pill-content">' +
+                  '<i data-lucide="cpu" style="width:14px;height:14px;color:var(--accent);flex-shrink:0;"></i>' +
+                  '<span title="' + d + '">' + d + '</span>' +
+                '</div>' +
+                '<button class="btn-copy-mini" onclick="copyText(\\'' + d + '\\', \\'Device ID disalin!\\')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Salin</button>' +
+              '</div>'
+            ).join('') + '</div>';
           }
 
-          let sessionStatus = '<span style="color: #10b981;">Aktif / Valid</span>';
+          let sessionStatus = '<span style="color: #10b981; font-weight:600;">Aktif / Valid</span>';
           if (item.suspended) {
             sessionStatus = '<span style="color: #ef4444; font-weight: bold;">SUSPENDED</span>';
           } else if (!item.session_token) {
             sessionStatus = '<span style="color: var(--text-muted);">Tidak ada sesi</span>';
           } else if (item.session_expires_at && new Date() > new Date(item.session_expires_at)) {
-            sessionStatus = '<span style="color: #eab308;">Sesi Kedaluwarsa</span>';
+            sessionStatus = '<span style="color: #eab308; font-weight:600;">Sesi Kedaluwarsa</span>';
           }
 
           const suspendBtn = item.suspended 
-            ? '<button class="btn-unsuspend" onclick="toggleSuspend(' + item.id + ', false)">Unsuspend</button>'
-            : '<button class="btn-suspend" onclick="toggleSuspend(' + item.id + ', true)">Suspend</button>';
+            ? '<button class="btn-unsuspend" onclick="confirmAction(\\'Unsuspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', false))"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Unsuspend</button>'
+            : '<button class="btn-suspend" onclick="confirmAction(\\'Suspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', true), true)"><i data-lucide="slash" style="width:12px;height:12px;"></i> Suspend</button>';
 
-          return '<tr>' +
-            '<td style="font-family: monospace; color: var(--accent); font-weight: bold;">' + item.license_key + '</td>' +
-            '<td>' + item.days_valid + ' ' + (item.unit === 'minutes' ? 'Min' : 'Hari') + '</td>' +
-            '<td>' + deviceHtml + '</td>' +
-            '<td><div>' + sessionStatus + '</div><div style="font-size:0.75rem; color:var(--text-muted);">Token: ' + (item.session_token ? item.session_token.substring(0,8)+'...' : '-') + '</div></td>' +
-            '<td><div class="actions-cell">' +
+          return '<div class="key-item-card">' +
+            '<div class="key-item-header">' +
+              '<div class="key-title">' + item.license_key + '</div>' +
+              '<div class="key-duration">' + item.days_valid + ' ' + (item.unit === 'minutes' ? 'Menit' : 'Hari') + '</div>' +
+            '</div>' +
+            '<div class="key-details">' +
+              '<div class="key-row-info">' +
+                '<span style="color:var(--text-muted);">Slot Device:</span>' +
+                '<span class="badge" style="border: 1px solid ' + badgeColor + '; color: ' + badgeColor + ';"><i data-lucide="hard-drive" style="width:11px;height:11px;"></i> ' + devices.length + ' / ' + maxDev + ' Dev</span>' +
+              '</div>' +
+              deviceHtml +
+              '<div class="key-row-info" style="margin-top:4px;">' +
+                '<span style="color:var(--text-muted);">Status Sesi:</span>' +
+                '<span>' + sessionStatus + '</span>' +
+              '</div>' +
+              '<div class="key-row-info" style="font-size:0.75rem; color:var(--text-muted); word-break:break-all;">' +
+                '<span>Token:</span> <span style="font-family:monospace;">' + (item.session_token || '-') + '</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="actions-grid">' +
               suspendBtn +
-              '<button class="btn-session" onclick="resetSession(' + item.id + ')">Reset Sesi</button>' +
-              '<button class="btn-reset" onclick="resetDevice(' + item.id + ')">Reset Dev</button>' +
-              '<button class="btn-delete" onclick="deleteKey(' + item.id + ')">Hapus</button>' +
-            '</div></td>' +
-          '</tr>';
+              '<button class="btn-session" onclick="confirmAction(\\'Reset Sesi untuk key ini?\\', () => resetSession(' + item.id + '))"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Reset Sesi</button>' +
+              '<button class="btn-reset" onclick="confirmAction(\\'Reset Device ID untuk key ini?\\', () => resetDevice(' + item.id + '), true)"><i data-lucide="cpu" style="width:12px;height:12px;"></i> Reset Dev</button>' +
+              '<button class="btn-delete" onclick="confirmAction(\\'Hapus License Key ' + item.license_key + '?\\', () => deleteKey(' + item.id + '), true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Key</button>' +
+            '</div>' +
+          '</div>';
         }).join('');
         lucide.createIcons();
       }
@@ -649,7 +722,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function deleteKey(id) {
-    if(!confirm('Hapus License Key?')) return;
     try {
       const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
@@ -658,7 +730,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function resetDevice(id) {
-    if(!confirm('Reset Device ID?')) return;
     try {
       const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
@@ -667,7 +738,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function resetSession(id) {
-    if(!confirm('Reset Session?')) return;
     try {
       const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
@@ -676,7 +746,6 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   async function toggleSuspend(id, suspend) {
-    if(!confirm(suspend ? 'Suspend License?' : 'Unsuspend License?')) return;
     const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
     try {
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
@@ -692,7 +761,7 @@ app.get('/', requireAuth, (req, res) => {
     const btnText = btn.querySelector('.btn-text');
     const spinner = document.getElementById('uploadSpinner');
 
-    if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu!');
+    if (fileInput.files.length === 0) return showToast('Pilih file terlebih dahulu!', true);
     const formData = new FormData();
     formData.append('library_file', fileInput.files[0]);
 
@@ -945,7 +1014,7 @@ app.get('/api/v1/status.php', async (req, res) => {
   }
 });
 
-app.get('/api/v1/library.php', async (retReq, res) => {
+app.get('/api/v1/library.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DB URL missing");
     const sql = neon(process.env.DATABASE_URL);
