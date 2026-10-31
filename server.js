@@ -214,9 +214,19 @@ app.get('/login', (req, res) => {
     --border: #374151;
     --radius: 12px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+  .light-mode {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: #f1f5f9;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
   body { background: var(--bg-primary); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
-  .login-card { width: 100%; max-width: 400px; background: var(--bg-secondary); padding: 32px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+  .login-card { width: 100%; max-width: 400px; background: var(--bg-secondary); padding: 32px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
   .login-header { text-align: center; margin-bottom: 24px; }
   .login-header i { color: var(--accent); width: 48px; height: 48px; margin-bottom: 12px; }
   .login-header h2 { font-size: 1.5rem; color: var(--accent); font-weight: 700; }
@@ -224,19 +234,18 @@ app.get('/login', (req, res) => {
   
   .input-group { margin-bottom: 16px; position: relative; }
   label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
-  input { width: 100%; padding: 12px 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; }
+  input { width: 100%; padding: 12px 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.95rem; outline: none; }
   input:focus { border-color: var(--accent); }
   
   .password-wrapper { position: relative; }
   .toggle-password { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; }
   .toggle-password:hover { color: var(--text-main); }
 
-  button.btn-login { background: var(--accent); color: #000; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s, transform 0.1s; margin-top: 8px; }
+  button.btn-login { background: var(--accent); color: #fff; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
   button.btn-login:hover { background: var(--accent-hover); }
-  button.btn-login:active { transform: scale(0.98); }
   
   #errorMsg { margin-top: 16px; font-size: 0.85rem; text-align: center; color: #ef4444; font-weight: 500; min-height: 20px; }
-  .spinner { width: 18px; height: 18px; border: 2px solid #000; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+  .spinner { width: 18px; height: 18px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -270,6 +279,9 @@ app.get('/login', (req, res) => {
 </div>
 
 <script>
+  if (localStorage.getItem('shadow_theme') === 'light') {
+    document.body.classList.add('light-mode');
+  }
   lucide.createIcons();
   function togglePassword() {
     const pwd = document.getElementById('password');
@@ -380,35 +392,50 @@ app.get('/', requireAuth, (req, res) => {
     --border: #374151;
     --radius: 12px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+  .light-mode {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: #f1f5f9;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
   body { background: var(--bg-primary); color: var(--text-main); padding: 24px 16px; min-height: 100vh; display: flex; justify-content: center; }
   .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 20px; }
   
-  header { display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); padding: 16px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+  header { display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); padding: 16px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); flex-wrap: wrap; gap: 12px; }
   header h2 { font-size: 1.25rem; color: var(--accent); display: flex; align-items: center; gap: 10px; font-weight: 700; }
   
-  .header-actions { display: flex; align-items: center; gap: 12px; }
+  .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .badge-version { font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
-  .btn-logout { background: #ef4444; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  
+  .btn-icon-top { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .btn-icon-top:hover { background: var(--border); }
+
+  .btn-logout { background: #ef4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
   .btn-logout:hover { background: #dc2626; }
 
-  .card { background: var(--bg-secondary); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.3s ease; }
-  .card:hover { border-color: #4b5563; }
+  .card { background: var(--bg-secondary); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
   .card-title { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 
   label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
-  input, select { width: 100%; padding: 10px 14px; margin-bottom: 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+  input, select { width: 100%; padding: 10px 14px; margin-bottom: 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.9rem; outline: none; }
   input:focus, select:focus { border-color: var(--accent); }
   
   .row-group { display: flex; gap: 10px; }
   
-  button { background: var(--accent); color: #000; border: none; padding: 10px 16px; cursor: pointer; border-radius: 8px; font-weight: 600; font-size: 0.9rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s, transform 0.1s; }
-  button:hover { background: var(--accent-hover); }
+  button { background: var(--accent); color: #fff; border: none; padding: 10px 16px; cursor: pointer; border-radius: 8px; font-weight: 600; font-size: 0.9rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  button:hover { opacity: 0.9; }
   button:active { transform: scale(0.98); }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  .btn-secondary { background: #334155; color: #fff; width: 100%; padding: 10px 14px; font-size: 0.85rem; border-radius: 8px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .btn-secondary:hover { background: #475569; }
+  .light-mode button[type="submit"], .light-mode .modal-btn-confirm { color: #fff; }
+
+  .btn-secondary { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); width: 100%; padding: 10px 14px; font-size: 0.85rem; border-radius: 8px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn-secondary:hover { background: var(--border); }
 
   .btn-delete { background: #ef4444; color: #fff; padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .btn-delete:hover { background: #dc2626; }
@@ -420,12 +447,11 @@ app.get('/', requireAuth, (req, res) => {
   .url-box { background: var(--bg-primary); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.82rem; color: var(--accent); word-break: break-all; overflow-wrap: break-word; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; width: 100%; }
   .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; word-break: break-all; }
 
-  /* RESPONSIVE CARD STACK UNTUK DAFTAR KEY (TANPA GESER/SCROLL HORIZONTAL DI HP) */
   .keys-container { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
   .key-item-card { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
   .key-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
   .key-title { font-family: monospace; color: var(--accent); font-weight: bold; font-size: 0.95rem; word-break: break-all; }
-  .key-duration { font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+  .key-duration { font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 2px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid var(--border); }
   
   .key-details { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
   .key-row-info { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -435,29 +461,26 @@ app.get('/', requireAuth, (req, res) => {
   .device-pill-content { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .device-pill-content span { overflow: hidden; text-overflow: ellipsis; }
   
-  .btn-copy-mini { background: #374151; color: var(--text-main); border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .btn-copy-mini:hover { background: #4b5563; }
+  .btn-copy-mini { background: var(--border); color: var(--text-main); border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .btn-copy-mini:hover { opacity: 0.8; }
 
   .actions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
   
-  /* CUSTOM MODAL KONFIRMASI MODERN */
   #customModal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; padding: 16px; }
   #customModal.show { opacity: 1; pointer-events: auto; }
-  .modal-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 360px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); transform: translateY(10px); transition: transform 0.25s ease; display: flex; flex-direction: column; gap: 16px; text-align: center; }
+  .modal-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 360px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); transform: translateY(10px); transition: transform 0.25s ease; display: flex; flex-direction: column; gap: 16px; text-align: center; }
   #customModal.show .modal-box { transform: translateY(0); }
   .modal-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(56, 189, 248, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; margin: 0 auto; }
   .modal-title { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
   .modal-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
   .modal-actions { display: flex; gap: 10px; margin-top: 4px; }
   .modal-btn { flex: 1; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; border: none; }
-  .modal-btn-cancel { background: #334155; color: #fff; }
-  .modal-btn-cancel:hover { background: #475569; }
-  .modal-btn-confirm { background: var(--accent); color: #000; }
-  .modal-btn-confirm:hover { background: var(--accent-hover); }
+  .modal-btn-cancel { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); }
+  .modal-btn-cancel:hover { opacity: 0.8; }
+  .modal-btn-confirm { background: var(--accent); color: #fff; }
   .modal-btn-confirm.danger { background: #ef4444; color: #fff; }
-  .modal-btn-confirm.danger:hover { background: #dc2626; }
 
-  #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 3000; }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 3000; }
   #toast.show { opacity: 1; }
   #toast.error { background: #ef4444; }
 
@@ -471,61 +494,63 @@ app.get('/', requireAuth, (req, res) => {
     <h2><i data-lucide="shield-check"></i> Shadow Admin</h2>
     <div class="header-actions">
       <span class="badge-version">v2.0.51</span>
-      <button class="btn-logout" onclick="confirmAction('Keluar dari Admin Panel?', logoutAdmin, false)"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Logout</button>
+      <button class="btn-icon-top" id="langToggleBtn" onclick="toggleLanguage()"><i data-lucide="languages" style="width:16px;height:16px;"></i> <span id="langText">ID</span></button>
+      <button class="btn-icon-top" id="themeToggleBtn" onclick="toggleTheme()"><i data-lucide="moon" id="themeIcon" style="width:16px;height:16px;"></i></button>
+      <button class="btn-logout" onclick="confirmAction(i18n[currentLang].logoutConfirm, logoutAdmin, false)"><i data-lucide="log-out" style="width:14px;height:14px;"></i> <span data-i18n="logout">Logout</span></button>
     </div>
   </header>
 
   <div class="card">
-    <div class="card-title"><i data-lucide="box"></i> Manajemen Library .so / .bin</div>
+    <div class="card-title"><i data-lucide="box"></i> <span data-i18n="libManagement">Manajemen Library .so / .bin</span></div>
     <div class="url-box">
       <span id="libUrlBox">Library URL: Memuat...</span>
-      <button class="btn-secondary" onclick="copyText(dynamicLibUrl, 'URL Library berhasil disalin!')"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL Library</button>
+      <button class="btn-secondary" onclick="copyText(dynamicLibUrl, i18n[currentLang].libUrlCopied)"><i data-lucide="copy" style="width:16px;height:16px;"></i> <span data-i18n="copyLibUrl">Salin URL Library</span></button>
     </div>
-    <div class="lib-info-box" id="libInfoBox"><div><b>Status Library:</b> Memeriksa database...</div></div>
+    <div class="lib-info-box" id="libInfoBox"><div><b data-i18n="libStatus">Status Library:</b> Memeriksa database...</div></div>
     <form id="formUploadLib">
-      <label>Upload File Library Baru (.bin / .so):</label>
+      <label data-i18n="uploadLabel">Upload File Library Baru (.bin / .so):</label>
       <input type="file" id="library_file" accept=".bin,.so" required>
       <button type="submit" id="btnUploadLib" style="background: #8b5cf6; color:#fff;">
-        <span class="btn-text"><i data-lucide="upload"></i> Upload Library ke DB</span>
+        <span class="btn-text"><i data-lucide="upload"></i> <span data-i18n="uploadBtn">Upload Library ke DB</span></span>
         <div class="spinner-btn" id="uploadSpinner"></div>
       </button>
     </form>
   </div>
 
   <div class="card">
-    <div class="card-title"><i data-lucide="key"></i> Buat License Key Baru</div>
+    <div class="card-title"><i data-lucide="key"></i> <span data-i18n="createKeyTitle">Buat License Key Baru</span></div>
     <div class="url-box">
       <span id="apiUrlBox">API URL: Memuat...</span>
-      <button class="btn-secondary" onclick="copyText(dynamicApiUrl, 'URL API berhasil disalin!')"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL API</button>
+      <button class="btn-secondary" onclick="copyText(dynamicApiUrl, i18n[currentLang].apiUrlCopied)"><i data-lucide="copy" style="width:16px;height:16px;"></i> <span data-i18n="copyApiUrl">Salin URL API</span></button>
     </div>
     <form id="formKey" style="margin-top: 14px;">
-      <label>Custom License Key:</label>
+      <label data-i18n="customKeyLabel">Custom License Key:</label>
       <div class="row-group">
         <input type="text" id="license_key" placeholder="Contoh: RIO-ABC123XYZ" required style="margin-bottom:0;">
-        <button type="button" onclick="generateKey()" style="width: 110px; background: #334155; color:#fff;"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Random</button>
+        <button type="button" onclick="generateKey()" style="width: 110px; background: #334155; color:#fff;"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> <span data-i18n="randomBtn">Random</span></button>
       </div>
       <div style="margin-top: 14px;">
-        <label id="durationLabel">Masa Aktif (Hari):</label>
+        <label id="durationLabel" data-i18n="durationDays">Masa Aktif (Hari):</label>
         <input type="number" id="days_valid" value="30" min="1" required>
       </div>
-      <label>Satuan Waktu:</label>
+      <label data-i18n="unitLabel">Satuan Waktu:</label>
       <select id="duration_unit" onchange="updateDurationLabel()">
-        <option value="days">Hari (Days)</option>
-        <option value="minutes">Menit (Test 1 Min)</option>
+        <option value="days" data-i18n="unitDays">Hari (Days)</option>
+        <option value="minutes" data-i18n="unitMinutes">Menit (Test 1 Min)</option>
       </select>
-      <label>Maksimal Device (Max Devices):</label>
+      <label data-i18n="maxDevLabel">Maksimal Device (Max Devices):</label>
       <input type="number" id="max_devices" value="1" min="1" required>
       <button type="submit" id="btnCreateKey">
-        <span class="btn-text"><i data-lucide="plus-circle"></i> Simpan Key ke Database</span>
+        <span class="btn-text"><i data-lucide="plus-circle"></i> <span data-i18n="saveKeyBtn">Simpan Key ke Database</span></span>
         <div class="spinner-btn" id="createSpinner"></div>
       </button>
     </form>
   </div>
 
   <div class="card">
-    <div class="card-title"><i data-lucide="list"></i> Daftar Key & Device Terdaftar</div>
+    <div class="card-title"><i data-lucide="list"></i> <span data-i18n="listKeyTitle">Daftar Key & Device Terdaftar</span></div>
     <div class="keys-container" id="keyList">
-      <div style="text-align: center; color: var(--text-muted); padding: 20px;">Memuat data...</div>
+      <div style="text-align: center; color: var(--text-muted); padding: 20px;" data-i18n="loading">Memuat data...</div>
     </div>
   </div>
 </div>
@@ -534,11 +559,11 @@ app.get('/', requireAuth, (req, res) => {
 <div id="customModal">
   <div class="modal-box">
     <div class="modal-icon" id="modalIcon"><i data-lucide="help-circle" style="width:24px;height:24px;"></i></div>
-    <div class="modal-title" id="modalTitle">Konfirmasi Aksi</div>
+    <div class="modal-title" id="modalTitle" data-i18n="modalTitleText">Konfirmasi Aksi</div>
     <div class="modal-desc" id="modalDesc">Apakah Anda yakin ingin melanjutkan tindakan ini?</div>
     <div class="modal-actions">
-      <button class="modal-btn modal-btn-cancel" onclick="closeModal()">Batal</button>
-      <button class="modal-btn modal-btn-confirm" id="modalConfirmBtn" onclick="executeModalAction()">Ya, Lanjutkan</button>
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal()" data-i18n="cancelBtn">Batal</button>
+      <button class="modal-btn modal-btn-confirm" id="modalConfirmBtn" onclick="executeModalAction()" data-i18n="confirmBtn">Ya, Lanjutkan</button>
     </div>
   </div>
 </div>
@@ -546,6 +571,144 @@ app.get('/', requireAuth, (req, res) => {
 <div id="toast">Notifikasi berhasil</div>
 
 <script>
+  const i18n = {
+    id: {
+      logout: "Keluar",
+      logoutConfirm: "Keluar dari Admin Panel?",
+      libManagement: "Manajemen Library .so / .bin",
+      copyLibUrl: "Salin URL Library",
+      libUrlCopied: "URL Library berhasil disalin!",
+      libStatus: "Status Library:",
+      uploadLabel: "Upload File Library Baru (.bin / .so):",
+      uploadBtn: "Upload Library ke DB",
+      createKeyTitle: "Buat License Key Baru",
+      copyApiUrl: "Salin URL API",
+      apiUrlCopied: "URL API berhasil disalin!",
+      customKeyLabel: "Custom License Key:",
+      randomBtn: "Random",
+      durationDays: "Masa Aktif (Hari):",
+      durationMinutes: "Masa Aktif (Menit):",
+      unitLabel: "Satuan Waktu:",
+      unitDays: "Hari (Days)",
+      unitMinutes: "Menit (Test 1 Min)",
+      maxDevLabel: "Maksimal Device (Max Devices):",
+      saveKeyBtn: "Simpan Key ke Database",
+      listKeyTitle: "Daftar Key & Device Terdaftar",
+      loading: "Memuat data...",
+      noKeys: "Belum ada key tersimpan.",
+      noDevice: "Belum ada device terdaftar",
+      deviceCopied: "Device ID disalin!",
+      activeValid: "Aktif / Valid",
+      suspended: "SUSPENDED",
+      noSession: "Tidak ada sesi",
+      sessionExpired: "Sesi Kedaluwarsa",
+      unsuspend: "Unsuspend",
+      suspend: "Suspend",
+      resetSession: "Reset Sesi",
+      resetDev: "Reset Dev",
+      deleteKey: "Hapus Key",
+      deleteLibConfirm: "Hapus file library ini dari database?",
+      modalTitleText: "Konfirmasi Aksi",
+      cancelBtn: "Batal",
+      confirmBtn: "Ya, Lanjutkan",
+      successDeleteKey: "License key berhasil dihapus",
+      successResetDev: "Device ID berhasil di-reset",
+      successResetSession: "Sesi berhasil di-reset",
+      successSuspend: "Key berhasil disuspend",
+      successUnsuspend: "Key berhasil di-unsuspend",
+      errorNetwork: "Terjadi kesalahan koneksi",
+      selectFile: "Pilih file terlebih dahulu!"
+    },
+    pt: {
+      logout: "Sair",
+      logoutConfirm: "Deseja sair do Painel Administrativo?",
+      libManagement: "Gerenciamento de Biblioteca .so / .bin",
+      copyLibUrl: "Copiar URL da Biblioteca",
+      libUrlCopied: "URL da biblioteca copiada com sucesso!",
+      libStatus: "Status da Biblioteca:",
+      uploadLabel: "Enviar Novo Arquivo de Biblioteca (.bin / .so):",
+      uploadBtn: "Enviar Biblioteca para o DB",
+      createKeyTitle: "Criar Nova Chave de Licença",
+      copyApiUrl: "Copiar URL da API",
+      apiUrlCopied: "URL da API copiada com sucesso!",
+      customKeyLabel: "Chave de Licença Personalizada:",
+      randomBtn: "Gerar",
+      durationDays: "Validade (Dias):",
+      durationMinutes: "Validade (Minutos):",
+      unitLabel: "Unidade de Tempo:",
+      unitDays: "Dias (Days)",
+      unitMinutes: "Minutos (Test 1 Min)",
+      maxDevLabel: "Dispositivos Máximos (Max Devices):",
+      saveKeyBtn: "Salvar Chave no Banco de Dados",
+      listKeyTitle: "Lista de Chaves e Dispositivos Registrados",
+      loading: "Carregando dados...",
+      noKeys: "Nenhuma chave salva.",
+      noDevice: "Nenhum dispositivo registrado",
+      deviceCopied: "ID do dispositivo copiado!",
+      activeValid: "Ativo / Válido",
+      suspended: "SUSPENSO",
+      noSession: "Sem sessão",
+      sessionExpired: "Sessão Expirada",
+      unsuspend: "Reativar",
+      suspend: "Suspender",
+      resetSession: "Redefinir Sessão",
+      resetDev: "Redefinir Disp.",
+      deleteKey: "Excluir Chave",
+      deleteLibConfirm: "Excluir este arquivo de biblioteca do banco de dados?",
+      modalTitleText: "Confirmação de Ação",
+      cancelBtn: "Cancelar",
+      confirmBtn: "Sim, Continuar",
+      successDeleteKey: "Chave de licença excluída com sucesso",
+      successResetDev: "ID do dispositivo redefinido com sucesso",
+      successResetSession: "Sessão redefinida com sucesso",
+      successSuspend: "Chave suspensa com sucesso",
+      successUnsuspend: "Chave reativada com sucesso",
+      errorNetwork: "Ocorreu um erro de conexão",
+      selectFile: "Selecione um arquivo primeiro!"
+    }
+  };
+
+  let currentLang = localStorage.getItem('shadow_lang') || 'id';
+  let currentTheme = localStorage.getItem('shadow_theme') || 'dark';
+
+  function applyTheme(theme) {
+    currentTheme = theme;
+    localStorage.setItem('shadow_theme', theme);
+    const icon = document.getElementById('themeIcon');
+    if (theme === 'light') {
+      document.body.classList.add('light-mode');
+      icon.setAttribute('data-lucide', 'sun');
+    } else {
+      document.body.classList.remove('light-mode');
+      icon.setAttribute('data-lucide', 'moon');
+    }
+    lucide.createIcons();
+  }
+
+  function toggleTheme() {
+    applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+  }
+
+  function applyLanguage(lang) {
+    currentLang = lang;
+    localStorage.setItem('shadow_lang', lang);
+    document.getElementById('langText').innerText = lang === 'id' ? 'ID' : 'PT';
+    
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (i18n[currentLang][key]) {
+        el.innerText = i18n[currentLang][key];
+      }
+    });
+    updateDurationLabel();
+    loadKeys();
+    loadLibraryInfo();
+  }
+
+  function toggleLanguage() {
+    applyLanguage(currentLang === 'id' ? 'pt' : 'id');
+  }
+
   let CSRF_TOKEN = '';
   let dynamicLibUrl = '';
   let dynamicApiUrl = '';
@@ -570,7 +733,11 @@ app.get('/', requireAuth, (req, res) => {
 
   function confirmAction(title, callback, isDanger = false) {
     document.getElementById('modalDesc').innerText = title;
+    document.getElementById('modalTitle').innerText = i18n[currentLang].modalTitleText;
     const confirmBtn = document.getElementById('modalConfirmBtn');
+    confirmBtn.innerText = i18n[currentLang].confirmBtn;
+    document.querySelector('.modal-btn-cancel').innerText = i18n[currentLang].cancelBtn;
+    
     if (isDanger) {
       confirmBtn.className = 'modal-btn modal-btn-confirm danger';
     } else {
@@ -592,7 +759,9 @@ app.get('/', requireAuth, (req, res) => {
     closeModal();
   }
 
-  lucide.createIcons();
+  applyTheme(currentTheme);
+  applyLanguage(currentLang);
+
   dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
   dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
   document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
@@ -604,7 +773,7 @@ app.get('/', requireAuth, (req, res) => {
 
   function updateDurationLabel() {
     const unit = document.getElementById('duration_unit').value;
-    document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
+    document.getElementById('durationLabel').innerText = unit === 'minutes' ? i18n[currentLang].durationMinutes : i18n[currentLang].durationDays;
   }
 
   function generateKey() {
@@ -630,7 +799,7 @@ app.get('/', requireAuth, (req, res) => {
       const box = document.getElementById('libInfoBox');
       if(res.ok && data.ok && data.library) {
         const lib = data.library;
-        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="confirmAction(\\'Hapus file library ini dari database?\\', deleteLibrary, true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
+        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="confirmAction(\\'' + i18n[currentLang].deleteLibConfirm + '\\', deleteLibrary, true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
         lucide.createIcons();
       } else {
         box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
@@ -643,7 +812,7 @@ app.get('/', requireAuth, (req, res) => {
       const res = await fetch('/api/admin/delete-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
       const data = await res.json();
       if(data.ok) { showToast('Library berhasil dihapus!'); loadLibraryInfo(); } else { showToast(data.message || 'Gagal menghapus library', true); }
-    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
+    } catch (e) { showToast(i18n[currentLang].errorNetwork, true); }
   }
 
   async function loadKeys() {
@@ -654,7 +823,7 @@ app.get('/', requireAuth, (req, res) => {
       const container = document.getElementById('keyList');
       if(res.ok && data.ok && data.licenses) {
         if(data.licenses.length === 0) {
-          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Belum ada key tersimpan.</div>';
+          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">' + i18n[currentLang].noKeys + '</div>';
           return;
         }
         container.innerHTML = data.licenses.map(item => {
@@ -663,7 +832,7 @@ app.get('/', requireAuth, (req, res) => {
           const isFull = devices.length >= maxDev;
           const badgeColor = isFull ? '#ef4444' : '#38bdf8';
           
-          let deviceHtml = '<div style="font-size: 0.8rem; color: var(--text-muted);">Belum ada device terdaftar</div>';
+          let deviceHtml = '<div style="font-size: 0.8rem; color: var(--text-muted);">' + i18n[currentLang].noDevice + '</div>';
           if (devices.length > 0) {
             deviceHtml = '<div class="device-list-box">' + devices.map(d => 
               '<div class="device-pill">' +
@@ -671,28 +840,28 @@ app.get('/', requireAuth, (req, res) => {
                   '<i data-lucide="cpu" style="width:14px;height:14px;color:var(--accent);flex-shrink:0;"></i>' +
                   '<span title="' + d + '">' + d + '</span>' +
                 '</div>' +
-                '<button class="btn-copy-mini" onclick="copyText(\\'' + d + '\\', \\'Device ID disalin!\\')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Salin</button>' +
+                '<button class="btn-copy-mini" onclick="copyText(\\'' + d + '\\', \\'' + i18n[currentLang].deviceCopied + '\\')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Salin</button>' +
               '</div>'
             ).join('') + '</div>';
           }
 
-          let sessionStatus = '<span style="color: #10b981; font-weight:600;">Aktif / Valid</span>';
+          let sessionStatus = '<span style="color: #10b981; font-weight:600;">' + i18n[currentLang].activeValid + '</span>';
           if (item.suspended) {
-            sessionStatus = '<span style="color: #ef4444; font-weight: bold;">SUSPENDED</span>';
+            sessionStatus = '<span style="color: #ef4444; font-weight: bold;">' + i18n[currentLang].suspended + '</span>';
           } else if (!item.session_token) {
-            sessionStatus = '<span style="color: var(--text-muted);">Tidak ada sesi</span>';
+            sessionStatus = '<span style="color: var(--text-muted);">' + i18n[currentLang].noSession + '</span>';
           } else if (item.session_expires_at && new Date() > new Date(item.session_expires_at)) {
-            sessionStatus = '<span style="color: #eab308; font-weight:600;">Sesi Kedaluwarsa</span>';
+            sessionStatus = '<span style="color: #eab308; font-weight:600;">' + i18n[currentLang].sessionExpired + '</span>';
           }
 
           const suspendBtn = item.suspended 
-            ? '<button class="btn-unsuspend" onclick="confirmAction(\\'Unsuspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', false))"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Unsuspend</button>'
-            : '<button class="btn-suspend" onclick="confirmAction(\\'Suspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', true), true)"><i data-lucide="slash" style="width:12px;height:12px;"></i> Suspend</button>';
+            ? '<button class="btn-unsuspend" onclick="confirmAction(\\'Unsuspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', false))"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> ' + i18n[currentLang].unsuspend + '</button>'
+            : '<button class="btn-suspend" onclick="confirmAction(\\'Suspend key ' + item.license_key + '?\\', () => toggleSuspend(' + item.id + ', true), true)"><i data-lucide="slash" style="width:12px;height:12px;"></i> ' + i18n[currentLang].suspend + '</button>';
 
           return '<div class="key-item-card">' +
             '<div class="key-item-header">' +
               '<div class="key-title">' + item.license_key + '</div>' +
-              '<div class="key-duration">' + item.days_valid + ' ' + (item.unit === 'minutes' ? 'Menit' : 'Hari') + '</div>' +
+              '<div class="key-duration">' + item.days_valid + ' ' + (item.unit === 'minutes' ? (currentLang === 'pt' ? 'Minutos' : 'Menit') : (currentLang === 'pt' ? 'Dias' : 'Hari')) + '</div>' +
             '</div>' +
             '<div class="key-details">' +
               '<div class="key-row-info">' +
@@ -710,9 +879,9 @@ app.get('/', requireAuth, (req, res) => {
             '</div>' +
             '<div class="actions-grid">' +
               suspendBtn +
-              '<button class="btn-session" onclick="confirmAction(\\'Reset Sesi untuk key ini?\\', () => resetSession(' + item.id + '))"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Reset Sesi</button>' +
-              '<button class="btn-reset" onclick="confirmAction(\\'Reset Device ID untuk key ini?\\', () => resetDevice(' + item.id + '), true)"><i data-lucide="cpu" style="width:12px;height:12px;"></i> Reset Dev</button>' +
-              '<button class="btn-delete" onclick="confirmAction(\\'Hapus License Key ' + item.license_key + '?\\', () => deleteKey(' + item.id + '), true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Key</button>' +
+              '<button class="btn-session" onclick="confirmAction(\\'Reset Sesi?\\', () => resetSession(' + item.id + '))"><i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> ' + i18n[currentLang].resetSession + '</button>' +
+              '<button class="btn-reset" onclick="confirmAction(\\'Reset Device ID?\\', () => resetDevice(' + item.id + '), true)"><i data-lucide="cpu" style="width:12px;height:12px;"></i> ' + i18n[currentLang].resetDev + '</button>' +
+              '<button class="btn-delete" onclick="confirmAction(\\'Hapus Key?\\', () => deleteKey(' + item.id + '), true)"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> ' + i18n[currentLang].deleteKey + '</button>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -725,24 +894,24 @@ app.get('/', requireAuth, (req, res) => {
     try {
       const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
-      if(data.ok) { showToast('License key berhasil dihapus'); loadKeys(); } else { showToast(data.message || 'Gagal menghapus key', true); }
-    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
+      if(data.ok) { showToast(i18n[currentLang].successDeleteKey); loadKeys(); } else { showToast(data.message || 'Error', true); }
+    } catch (e) { showToast(i18n[currentLang].errorNetwork, true); }
   }
 
   async function resetDevice(id) {
     try {
       const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
-      if(data.ok) { showToast('Device ID berhasil di-reset'); loadKeys(); } else { showToast(data.message || 'Gagal reset device', true); }
-    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
+      if(data.ok) { showToast(i18n[currentLang].successResetDev); loadKeys(); } else { showToast(data.message || 'Error', true); }
+    } catch (e) { showToast(i18n[currentLang].errorNetwork, true); }
   }
 
   async function resetSession(id) {
     try {
       const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
-      if(data.ok) { showToast('Sesi berhasil di-reset'); loadKeys(); } else { showToast(data.message || 'Gagal reset sesi', true); }
-    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
+      if(data.ok) { showToast(i18n[currentLang].successResetSession); loadKeys(); } else { showToast(data.message || 'Error', true); }
+    } catch (e) { showToast(i18n[currentLang].errorNetwork, true); }
   }
 
   async function toggleSuspend(id, suspend) {
@@ -750,8 +919,8 @@ app.get('/', requireAuth, (req, res) => {
     try {
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
       const data = await res.json();
-      if(data.ok) { showToast(suspend ? 'Key berhasil disuspend' : 'Key berhasil di-unsuspend'); loadKeys(); } else { showToast(data.message || 'Gagal mengubah status suspend', true); }
-    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
+      if(data.ok) { showToast(suspend ? i18n[currentLang].successSuspend : i18n[currentLang].successUnsuspend); loadKeys(); } else { showToast(data.message || 'Error', true); }
+    } catch (e) { showToast(i18n[currentLang].errorNetwork, true); }
   }
 
   document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
@@ -761,7 +930,7 @@ app.get('/', requireAuth, (req, res) => {
     const btnText = btn.querySelector('.btn-text');
     const spinner = document.getElementById('uploadSpinner');
 
-    if (fileInput.files.length === 0) return showToast('Pilih file terlebih dahulu!', true);
+    if (fileInput.files.length === 0) return showToast(i18n[currentLang].selectFile, true);
     const formData = new FormData();
     formData.append('library_file', fileInput.files[0]);
 
@@ -777,10 +946,10 @@ app.get('/', requireAuth, (req, res) => {
         fileInput.value = ''; 
         loadLibraryInfo();
       } else { 
-        showToast('❌ ' + (data.message || 'Gagal upload library'), true); 
+        showToast('❌ ' + (data.message || 'Error'), true); 
       }
     } catch (err) { 
-      showToast('❌ Terjadi kesalahan jaringan', true); 
+      showToast('❌ ' + i18n[currentLang].errorNetwork, true); 
     } finally {
       btn.disabled = false;
       btnText.style.display = 'inline';
@@ -815,10 +984,10 @@ app.get('/', requireAuth, (req, res) => {
         document.getElementById('license_key').value = ''; 
         loadKeys();
       } else { 
-        showToast('❌ ' + (data.message || 'Gagal membuat key'), true); 
+        showToast('❌ ' + (data.message || 'Error'), true); 
       }
     } catch (err) { 
-      showToast('❌ Terjadi kesalahan jaringan', true); 
+      showToast('❌ ' + i18n[currentLang].errorNetwork, true); 
     } finally {
       btn.disabled = false;
       btnText.style.display = 'inline';
