@@ -29,7 +29,6 @@ const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
-// Inisialisasi RSA Private Key secara aman agar tidak crash di environment serverless
 let PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 if (!PRIVATE_KEY) {
   try {
@@ -408,7 +407,7 @@ app.get('/', requireAuth, (req, res) => {
   button:active { transform: scale(0.98); }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  .btn-secondary { background: #334155; color: #fff; width: auto; padding: 6px 12px; font-size: 0.8rem; }
+  .btn-secondary { background: #334155; color: #fff; width: 100%; padding: 10px 14px; font-size: 0.85rem; border-radius: 8px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .btn-secondary:hover { background: #475569; }
 
   .btn-delete { background: #ef4444; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
@@ -418,8 +417,10 @@ app.get('/', requireAuth, (req, res) => {
   .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
   .btn-session { background: #6366f1; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
 
-  .url-box { background: var(--bg-primary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; color: var(--accent); word-break: break-all; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+  /* PERBAIKAN URL BOX SUPAYA FULL DAN RAPI DI HP (TANPA GESER) */
+  .url-box { background: var(--bg-primary); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.82rem; color: var(--accent); word-break: break-all; overflow-wrap: break-word; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; width: 100%; }
+  
+  .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; word-break: break-all; }
 
   .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
   table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
@@ -428,7 +429,7 @@ app.get('/', requireAuth, (req, res) => {
   tr:last-child td { border-bottom: none; }
   
   .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
-  .device-debug { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+  .device-debug { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; word-break: break-all; white-space: normal; }
   
   #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 1000; }
   #toast.show { opacity: 1; }
@@ -453,7 +454,7 @@ app.get('/', requireAuth, (req, res) => {
     <div class="card-title"><i data-lucide="box"></i> Manajemen Library .so / .bin</div>
     <div class="url-box">
       <span id="libUrlBox">Library URL: Memuat...</span>
-      <button class="btn-secondary" onclick="copyLibraryUrl()"><i data-lucide="copy" style="width:14px;height:14px;"></i> Copy</button>
+      <button class="btn-secondary" onclick="copyLibraryUrl()"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL Library</button>
     </div>
     <div class="lib-info-box" id="libInfoBox"><div><b>Status Library:</b> Memeriksa database...</div></div>
     <form id="formUploadLib">
@@ -468,8 +469,11 @@ app.get('/', requireAuth, (req, res) => {
 
   <div class="card">
     <div class="card-title"><i data-lucide="key"></i> Buat License Key Baru</div>
-    <div class="url-box" id="apiUrlBox" style="margin-bottom: 14px;">API URL: Memuat...</div>
-    <form id="formKey">
+    <div class="url-box">
+      <span id="apiUrlBox">API URL: Memuat...</span>
+      <button class="btn-secondary" onclick="copyApiUrl()"><i data-lucide="copy" style="width:16px;height:16px;"></i> Salin URL API</button>
+    </div>
+    <form id="formKey" style="margin-top: 14px;">
       <label>Custom License Key:</label>
       <div class="row-group">
         <input type="text" id="license_key" placeholder="Contoh: RIO-ABC123XYZ" required style="margin-bottom:0;">
@@ -512,6 +516,8 @@ app.get('/', requireAuth, (req, res) => {
 
 <script>
   let CSRF_TOKEN = '';
+  let dynamicLibUrl = '';
+  let dynamicApiUrl = '';
 
   async function fetchCsrf() {
     try {
@@ -531,14 +537,18 @@ app.get('/', requireAuth, (req, res) => {
   }
 
   lucide.createIcons();
-  const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
-  const dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
+  dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
+  dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
   document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
   document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
 
   function copyLibraryUrl() {
     navigator.clipboard.writeText(dynamicLibUrl).then(() => showToast('URL Library berhasil disalin!'));
   }
+  function copyApiUrl() {
+    navigator.clipboard.writeText(dynamicApiUrl).then(() => showToast('URL API berhasil disalin!'));
+  }
+
   function updateDurationLabel() {
     const unit = document.getElementById('duration_unit').value;
     document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
@@ -935,7 +945,7 @@ app.get('/api/v1/status.php', async (req, res) => {
   }
 });
 
-app.get('/api/v1/library.php', async (req, res) => {
+app.get('/api/v1/library.php', async (retReq, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).send("DB URL missing");
     const sql = neon(process.env.DATABASE_URL);
