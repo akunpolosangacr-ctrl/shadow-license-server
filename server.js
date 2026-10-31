@@ -2,15 +2,18 @@ const express = require('express');
 const { neon } = require('@neondatabase/serverless');
 const crypto = require('crypto');
 const multer = require('multer');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Middleware CORS agar semua HP/client bisa akses tanpa diblokir
+// Middleware CORS dasar
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-ID');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-ID, X-CSRF-Token');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -24,6 +27,7 @@ const upload = multer({
 
 const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 let PRIVATE_KEY;
 try {
@@ -37,6 +41,8 @@ try {
   PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 }
 
+const activeAdminSessions = new Map();
+
 function toUrlSafeBase64(buffer) {
   return buffer.toString('base64')
     .replace(/=/g, '')
@@ -44,24 +50,32 @@ function toUrlSafeBase64(buffer) {
     .replace(/\//g, '_');
 }
 
+function generateAdminSessionToken(username) {
+  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
+  hmac.update(username + Date.now().toString());
+  return hmac.digest('hex');
+}
+
 const requireAuth = (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin"');
-      return res.status(401).send('Autentikasi diperlukan.');
+    const sessionToken = req.cookies && req.cookies.admin_session;
+    if (sessionToken && activeAdminSessions.has(sessionToken)) {
+      if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+        const clientCsrf = req.headers['x-csrf-token'] || req.body._csrf;
+        const storedCsrf = activeAdminSessions.get(sessionToken).csrfToken;
+        if (!clientCsrf || clientCsrf !== storedCsrf) {
+          return res.status(403).json({ ok: false, message: "CSRF token tidak valid!" });
+        }
+      }
+      return next();
     }
-    const parts = authHeader.split(' ');
-    if (parts.length < 2) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin"');
-      return res.status(401).send('Format auth salah.');
-    }
-    const credentials = Buffer.from(parts[1], 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
-    if (username === ADMIN_USER && password === ADMIN_PASS) { return next(); } 
   } catch (err) {}
-  res.setHeader('WWW-Authenticate', 'Basic realm="Shadow Admin"');
-  return res.status(401).send('Access Denied!');
+
+  if (req.xhr || req.path.startsWith('/api/admin/')) {
+    return res.status(401).json({ ok: false, message: "Autentikasi diperlukan." });
+  }
+
+  return res.redirect('/login');
 };
 
 async function initDB(sql) {
@@ -176,7 +190,173 @@ async function handleLicenseActivation(req, res) {
   }
 }
 
-// ADMIN PANEL HTML & ROUTES (UI modern, rapi, smooth, menggunakan Lucide Icons via JS CDN)
+// ==================== HALAMAN LOGIN HTML ====================
+app.get('/login', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - Shadow Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg-primary: #090d16;
+    --bg-secondary: #111827;
+    --bg-card: #1f2937;
+    --accent: #38bdf8;
+    --accent-hover: #0ea5e9;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border: #374151;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+  body { background: var(--bg-primary); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+  .login-card { width: 100%; max-width: 400px; background: var(--bg-secondary); padding: 32px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+  .login-header { text-align: center; margin-bottom: 24px; }
+  .login-header i { color: var(--accent); width: 48px; height: 48px; margin-bottom: 12px; }
+  .login-header h2 { font-size: 1.5rem; color: var(--accent); font-weight: 700; }
+  .login-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+  
+  .input-group { margin-bottom: 16px; position: relative; }
+  label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
+  input { width: 100%; padding: 12px 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: var(--accent); }
+  
+  .password-wrapper { position: relative; }
+  .toggle-password { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; }
+  .toggle-password:hover { color: var(--text-main); }
+
+  button.btn-login { background: var(--accent); color: #000; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s, transform 0.1s; margin-top: 8px; }
+  button.btn-login:hover { background: var(--accent-hover); }
+  button.btn-login:active { transform: scale(0.98); }
+  
+  #errorMsg { margin-top: 16px; font-size: 0.85rem; text-align: center; color: #ef4444; font-weight: 500; min-height: 20px; }
+  .spinner { width: 18px; height: 18px; border: 2px solid #000; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="login-header">
+    <i data-lucide="shield-check"></i>
+    <h2>Shadow Admin</h2>
+    <p>Silakan login untuk mengelola lisensi</p>
+  </div>
+  <form id="loginForm">
+    <div class="input-group">
+      <label>Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required placeholder="Masukkan username">
+    </div>
+    <div class="input-group">
+      <label>Password</label>
+      <div class="password-wrapper">
+        <input type="password" id="password" name="password" autocomplete="current-password" required placeholder="Masukkan password">
+        <button type="button" class="toggle-password" id="toggleBtn" onclick="togglePassword()">
+          <i data-lucide="eye" style="width:18px;height:18px;" id="eyeIcon"></i>
+        </button>
+      </div>
+    </div>
+    <button type="submit" class="btn-login" id="submitBtn">
+      <span id="btnText">Login</span>
+      <div class="spinner" id="spinner"></div>
+    </button>
+    <div id="errorMsg"></div>
+  </form>
+</div>
+
+<script>
+  lucide.createIcons();
+  function togglePassword() {
+    const pwd = document.getElementById('password');
+    const icon = document.getElementById('eyeIcon');
+    if (pwd.type === 'password') {
+      pwd.type = 'text';
+      icon.setAttribute('data-lucide', 'eye-off');
+    } else {
+      pwd.type = 'password';
+      icon.setAttribute('data-lucide', 'eye');
+    }
+    lucide.createIcons();
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const errBox = document.getElementById('errorMsg');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+    const submitBtn = document.getElementById('submitBtn');
+
+    errBox.innerText = '';
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+    submitBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        window.location.href = '/';
+      } else {
+        errBox.innerText = data.message || 'Login gagal. Periksa kembali username/password.';
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+        submitBtn.disabled = false;
+      }
+    } catch (err) {
+      errBox.innerText = 'Terjadi kesalahan koneksi ke server.';
+      btnText.style.display = 'inline';
+      spinner.style.display = 'none';
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>`);
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    const token = generateAdminSessionToken(username);
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    activeAdminSessions.set(token, { username, csrfToken, createdAt: Date.now() });
+
+    res.cookie('admin_session', token, {
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000
+    });
+    return res.json({ ok: true, csrfToken });
+  }
+  return res.status(401).json({ ok: false, message: "Username atau password salah!" });
+});
+
+app.post('/api/admin/logout', requireAuth, (req, res) => {
+  const token = req.cookies && req.cookies.admin_session;
+  if (token) {
+    activeAdminSessions.delete(token);
+  }
+  res.clearCookie('admin_session');
+  return res.json({ ok: true });
+});
+
+app.get('/api/admin/csrf', requireAuth, (req, res) => {
+  const token = req.cookies && req.cookies.admin_session;
+  const session = activeAdminSessions.get(token);
+  return res.json({ ok: true, csrfToken: session ? session.csrfToken : '' });
+});
+
+// ==================== ADMIN PANEL HTML & ROUTES ====================
 app.get('/', requireAuth, (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -184,7 +364,6 @@ app.get('/', requireAuth, (req, res) => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shadow License Admin Panel</title>
-<!-- Google Fonts & Lucide Icons -->
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
@@ -205,7 +384,11 @@ app.get('/', requireAuth, (req, res) => {
   
   header { display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); padding: 16px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
   header h2 { font-size: 1.25rem; color: var(--accent); display: flex; align-items: center; gap: 10px; font-weight: 700; }
-  header span { font-size: 0.85rem; color: var(--text-muted); background: var(--bg-card); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+  
+  .header-actions { display: flex; align-items: center; gap: 12px; }
+  .badge-version { font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+  .btn-logout { background: #ef4444; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .btn-logout:hover { background: #dc2626; }
 
   .card { background: var(--bg-secondary); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.3s ease; }
   .card:hover { border-color: #4b5563; }
@@ -220,40 +403,49 @@ app.get('/', requireAuth, (req, res) => {
   button { background: var(--accent); color: #000; border: none; padding: 10px 16px; cursor: pointer; border-radius: 8px; font-weight: 600; font-size: 0.9rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s, transform 0.1s; }
   button:hover { background: var(--accent-hover); }
   button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .btn-secondary { background: #334155; color: #fff; width: auto; padding: 6px 12px; font-size: 0.8rem; }
   .btn-secondary:hover { background: #475569; }
 
-  .btn-delete { background: #ef4444; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-delete { background: #ef4444; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
   .btn-delete:hover { background: #dc2626; }
-  .btn-reset { background: #eab308; color: #000; width: auto; padding: 5px 10px; font-size: 0.75rem; }
-  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
-  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
-  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-reset { background: #eab308; color: #000; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
 
   .url-box { background: var(--bg-primary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; color: var(--accent); word-break: break-all; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 
-  .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; }
+  .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
   table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
-  th, td { border-bottom: 1px solid var(--border); padding: 10px 8px; text-align: left; }
+  th, td { border-bottom: 1px solid var(--border); padding: 12px 10px; text-align: left; }
   th { background: var(--bg-card); color: var(--accent); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
   
-  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
   .device-debug { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
-  #msg, #uploadMsg { margin-top: 8px; font-size: 0.85rem; text-align: center; font-weight: 500; }
   
-  .actions-cell { display: flex; flex-wrap: wrap; gap: 4px; }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 1000; }
+  #toast.show { opacity: 1; }
+  #toast.error { background: #ef4444; }
+
+  .actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .spinner-btn { width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 <div class="container">
   <header>
     <h2><i data-lucide="shield-check"></i> Shadow Admin</h2>
-    <span>v2.0.51</span>
+    <div class="header-actions">
+      <span class="badge-version">v2.0.51</span>
+      <button class="btn-logout" onclick="logoutAdmin()"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Logout</button>
+    </div>
   </header>
 
-  <!-- MANAJEMEN LIBRARY -->
   <div class="card">
     <div class="card-title"><i data-lucide="box"></i> Manajemen Library .so / .bin</div>
     <div class="url-box">
@@ -264,12 +456,13 @@ app.get('/', requireAuth, (req, res) => {
     <form id="formUploadLib">
       <label>Upload File Library Baru (.bin / .so):</label>
       <input type="file" id="library_file" accept=".bin,.so" required>
-      <button type="submit" style="background: #8b5cf6; color:#fff;"><i data-lucide="upload"></i> Upload Library ke DB</button>
+      <button type="submit" id="btnUploadLib" style="background: #8b5cf6; color:#fff;">
+        <span class="btn-text"><i data-lucide="upload"></i> Upload Library ke DB</span>
+        <div class="spinner-btn" id="uploadSpinner"></div>
+      </button>
     </form>
-    <div id="uploadMsg"></div>
   </div>
 
-  <!-- BUAT LICENSE KEY -->
   <div class="card">
     <div class="card-title"><i data-lucide="key"></i> Buat License Key Baru</div>
     <div class="url-box" id="apiUrlBox" style="margin-bottom: 14px;">API URL: Memuat...</div>
@@ -290,12 +483,13 @@ app.get('/', requireAuth, (req, res) => {
       </select>
       <label>Maksimal Device (Max Devices):</label>
       <input type="number" id="max_devices" value="1" min="1" required>
-      <button type="submit"><i data-lucide="plus-circle"></i> Simpan Key ke Database</button>
+      <button type="submit" id="btnCreateKey">
+        <span class="btn-text"><i data-lucide="plus-circle"></i> Simpan Key ke Database</span>
+        <div class="spinner-btn" id="createSpinner"></div>
+      </button>
     </form>
-    <div id="msg"></div>
   </div>
 
-  <!-- DAFTAR KEY -->
   <div class="card">
     <div class="card-title"><i data-lucide="list"></i> Daftar Key & Device Terdaftar</div>
     <div class="table-responsive">
@@ -311,7 +505,28 @@ app.get('/', requireAuth, (req, res) => {
   </div>
 </div>
 
+<div id="toast">Notifikasi berhasil</div>
+
 <script>
+  let CSRF_TOKEN = '';
+
+  async function fetchCsrf() {
+    try {
+      const res = await fetch('/api/admin/csrf');
+      const data = await res.json();
+      if (res.ok && data.csrfToken) {
+        CSRF_TOKEN = data.csrfToken;
+      }
+    } catch (e) {}
+  }
+
+  function showToast(message, isError = false) {
+    const t = document.getElementById('toast');
+    t.innerText = message;
+    t.className = isError ? 'error show' : 'show';
+    setTimeout(() => { t.className = ''; }, 3000);
+  }
+
   lucide.createIcons();
   const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
   const dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
@@ -319,7 +534,7 @@ app.get('/', requireAuth, (req, res) => {
   document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
 
   function copyLibraryUrl() {
-    navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
+    navigator.clipboard.writeText(dynamicLibUrl).then(() => showToast('URL Library berhasil disalin!'));
   }
   function updateDurationLabel() {
     const unit = document.getElementById('duration_unit').value;
@@ -331,6 +546,17 @@ app.get('/', requireAuth, (req, res) => {
     for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
     document.getElementById('license_key').value = res;
   }
+
+  async function logoutAdmin() {
+    if (!confirm('Yakin ingin keluar dari Admin Panel?')) return;
+    try {
+      await fetch('/api/admin/logout', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      window.location.href = '/login';
+    } catch (e) {
+      window.location.href = '/login';
+    }
+  }
+
   async function loadLibraryInfo() {
     try {
       const res = await fetch('/api/admin/lib-info');
@@ -338,22 +564,27 @@ app.get('/', requireAuth, (req, res) => {
       const box = document.getElementById('libInfoBox');
       if(res.ok && data.ok && data.library) {
         const lib = data.library;
-        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 6px;"><button class="btn-delete" onclick="deleteLibrary()"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
+        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="deleteLibrary()"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
         lucide.createIcons();
       } else {
         box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
       }
     } catch (err) { document.getElementById('libInfoBox').innerText = 'Gagal memuat info library.'; }
   }
+
   async function deleteLibrary() {
-    if(!confirm('Yakin ingin menghapus library aktif?')) return;
-    const res = await fetch('/api/admin/delete-lib', { method: 'POST' });
-    const data = await res.json();
-    if(data.ok) { alert('Berhasil dihapus!'); loadLibraryInfo(); } else { alert('Gagal'); }
+    if(!confirm('Hapus Library?')) return;
+    try {
+      const res = await fetch('/api/admin/delete-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      const data = await res.json();
+      if(data.ok) { showToast('Library berhasil dihapus!'); loadLibraryInfo(); } else { showToast(data.message || 'Gagal menghapus library', true); }
+    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
   }
+
   async function loadKeys() {
     try {
       const res = await fetch('/api/admin/list');
+      if (res.status === 401) { window.location.href = '/login'; return; }
       const data = await res.json();
       const tbody = document.getElementById('keyList');
       if(res.ok && data.ok && data.licenses) {
@@ -403,69 +634,120 @@ app.get('/', requireAuth, (req, res) => {
       }
     } catch(err) { console.error(err); }
   }
+
   async function deleteKey(id) {
-    if(!confirm('Yakin ingin menghapus key ini?')) return;
-    const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-    const data = await res.json();
-    if(data.ok) loadKeys(); else alert('Gagal');
+    if(!confirm('Hapus License Key?')) return;
+    try {
+      const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if(data.ok) { showToast('License key berhasil dihapus'); loadKeys(); } else { showToast(data.message || 'Gagal menghapus key', true); }
+    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
   }
+
   async function resetDevice(id) {
     if(!confirm('Reset Device ID?')) return;
-    const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-    const data = await res.json();
-    if(data.ok) loadKeys(); else alert('Gagal');
+    try {
+      const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if(data.ok) { showToast('Device ID berhasil di-reset'); loadKeys(); } else { showToast(data.message || 'Gagal reset device', true); }
+    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
   }
+
   async function resetSession(id) {
-    if(!confirm('Reset Sesi untuk key ini?')) return;
-    const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-    const data = await res.json();
-    if(data.ok) loadKeys(); else alert('Gagal');
+    if(!confirm('Reset Session?')) return;
+    try {
+      const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if(data.ok) { showToast('Sesi berhasil di-reset'); loadKeys(); } else { showToast(data.message || 'Gagal reset sesi', true); }
+    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
   }
+
   async function toggleSuspend(id, suspend) {
-    if(!confirm(suspend ? 'Suspend key ini?' : 'Unsuspend key ini?')) return;
+    if(!confirm(suspend ? 'Suspend License?' : 'Unsuspend License?')) return;
     const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
-    const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-    const data = await res.json();
-    if(data.ok) loadKeys(); else alert('Gagal');
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if(data.ok) { showToast(suspend ? 'Key berhasil disuspend' : 'Key berhasil di-unsuspend'); loadKeys(); } else { showToast(data.message || 'Gagal mengubah status suspend', true); }
+    } catch (e) { showToast('Terjadi kesalahan koneksi', true); }
   }
+
   document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fileInput = document.getElementById('library_file');
-    const uploadMsg = document.getElementById('uploadMsg');
-    if (fileInput.files.length === 0) return alert('Pilih file!');
+    const btn = document.getElementById('btnUploadLib');
+    const btnText = btn.querySelector('.btn-text');
+    const spinner = document.getElementById('uploadSpinner');
+
+    if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu!');
     const formData = new FormData();
     formData.append('library_file', fileInput.files[0]);
-    uploadMsg.style.color = 'var(--text-muted)'; uploadMsg.innerText = 'Mengupload...';
+
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+
     try {
-      const res = await fetch('/api/admin/upload-lib', { method: 'POST', body: formData });
+      const res = await fetch('/api/admin/upload-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN }, body: formData });
       const data = await res.json();
       if (res.ok && data.ok) {
-        uploadMsg.style.color = 'var(--accent)'; uploadMsg.innerText = '✅ ' + data.message;
-        fileInput.value = ''; loadLibraryInfo();
-      } else { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ ' + (data.message || 'Gagal'); }
-    } catch (err) { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ Error'; }
+        showToast('✅ ' + data.message);
+        fileInput.value = ''; 
+        loadLibraryInfo();
+      } else { 
+        showToast('❌ ' + (data.message || 'Gagal upload library'), true); 
+      }
+    } catch (err) { 
+      showToast('❌ Terjadi kesalahan jaringan', true); 
+    } finally {
+      btn.disabled = false;
+      btnText.style.display = 'inline';
+      spinner.style.display = 'none';
+    }
   });
+
   document.getElementById('formKey').addEventListener('submit', async (e) => {
     e.preventDefault();
     const key = document.getElementById('license_key').value;
     const days = document.getElementById('days_valid').value;
     const unit = document.getElementById('duration_unit').value;
     const max_devices = document.getElementById('max_devices').value;
-    const msg = document.getElementById('msg');
-    msg.style.color = 'var(--text-muted)'; msg.innerText = 'Menyimpan...';
-    const res = await fetch('/api/admin/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
-    });
-    const data = await res.json();
-    if(res.ok && data.ok) {
-      msg.style.color = 'var(--accent)'; msg.innerText = '✅ ' + data.message;
-      document.getElementById('license_key').value = ''; loadKeys();
-    } else { msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Gagal'); }
+    
+    const btn = document.getElementById('btnCreateKey');
+    const btnText = btn.querySelector('.btn-text');
+    const spinner = document.getElementById('createSpinner');
+
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+
+    try {
+      const res = await fetch('/api/admin/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
+      });
+      const data = await res.json();
+      if(res.ok && data.ok) {
+        showToast('✅ ' + data.message);
+        document.getElementById('license_key').value = ''; 
+        loadKeys();
+      } else { 
+        showToast('❌ ' + (data.message || 'Gagal membuat key'), true); 
+      }
+    } catch (err) { 
+      showToast('❌ Terjadi kesalahan jaringan', true); 
+    } finally {
+      btn.disabled = false;
+      btnText.style.display = 'inline';
+      spinner.style.display = 'none';
+    }
   });
-  loadLibraryInfo();
-  loadKeys();
+
+  fetchCsrf().then(() => {
+    loadLibraryInfo();
+    loadKeys();
+  });
 </script>
 </body>
 </html>`);
