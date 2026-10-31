@@ -6,6 +6,17 @@ const multer = require('multer');
 const app = express();
 app.use(express.json());
 
+// Middleware CORS agar semua HP/client bisa akses tanpa diblokir
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-ID');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 30 * 1024 * 1024 } 
@@ -26,7 +37,6 @@ try {
   PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 }
 
-// Helper untuk Base64 URL-Safe tanpa padding (flag 0xb setara dengan Android Base64.URL_SAFE | NO_WRAP | NO_PADDING)
 function toUrlSafeBase64(buffer) {
   return buffer.toString('base64')
     .replace(/=/g, '')
@@ -88,7 +98,9 @@ async function handleLicenseActivation(req, res) {
     const sql = neon(process.env.DATABASE_URL);
     await initDB(sql);
 
-    const { license_key, device_id } = req.body;
+    const license_key = req.body.license_key || req.query.license_key;
+    const clientDevice = req.body.device_id || req.headers['x-device-id'] || "unknown";
+
     if (!license_key) return res.json({ ok: false, message: "Key wajib diisi!" });
 
     const result = await sql`SELECT * FROM licenses WHERE license_key = ${String(license_key).trim()}`;
@@ -102,7 +114,6 @@ async function handleLicenseActivation(req, res) {
       return res.json({ ok: false, message: "Key sudah kedaluwarsa!" });
     }
 
-    const clientDevice = device_id || "unknown";
     const maxDevs = record.max_devices || 1;
     let boundDevices = record.device_id ? record.device_id.split(',').map(s => s.trim()).filter(Boolean) : [];
 
@@ -118,7 +129,7 @@ async function handleLicenseActivation(req, res) {
     const serverTimeSec = Math.floor(nowMs / 1000);
     const expiresTimestampSec = record.expires_at ? Math.floor(new Date(record.expires_at).getTime() / 1000) : (serverTimeSec + 86400);
     
-    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionToken = record.session_token || crypto.randomBytes(32).toString('hex');
     const sessionExpiresAt = record.expires_at ? new Date(record.expires_at) : new Date(nowMs + 10 * 60 * 1000);
     const sessionExpiresSec = Math.floor(sessionExpiresAt.getTime() / 1000);
 
@@ -159,14 +170,13 @@ async function handleLicenseActivation(req, res) {
     } catch (e) {}
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Connection', 'close');
     return res.status(200).json({ ok: true, data: base64Data, signature: signature });
   } catch (err) {
     return res.status(500).json({ ok: false, message: "Server Error: " + err.message });
   }
 }
 
-// ADMIN PANEL HTML & ROUTES
+// ADMIN PANEL HTML & ROUTES (UI modern, rapi, smooth, menggunakan Lucide Icons via JS CDN)
 app.get('/', requireAuth, (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -174,51 +184,102 @@ app.get('/', requireAuth, (req, res) => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shadow License Admin Panel</title>
+<!-- Google Fonts & Lucide Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-  body { background: #0f172a; color: #f8fafc; font-family: monospace; padding: 20px; }
-  .container { max-width: 750px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-  h2 { color: #38bdf8; text-align: center; }
-  .card { background: #0f172a; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #334155; }
-  input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px; box-sizing: border-box; }
-  button { background: #0284c7; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; width: 100%; }
-  button:hover { background: #0369a1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-  th, td { border: 1px solid #334155; padding: 6px; text-align: left; }
-  th { background: #1e293b; color: #38bdf8; }
-  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-  .btn-delete { background: #ef4444; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
-  .btn-reset { background: #eab308; color: #000; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
-  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
-  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
-  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 4px 8px; font-size: 10px; margin-top: 2px; }
-  .device-debug { font-size: 9px; color: #94a3b8; word-break: break-all; margin-top: 2px; }
-  .lib-info-box { background: #111827; padding: 10px; border-radius: 4px; border: 1px solid #374151; font-size: 12px; margin-bottom: 10px; }
+  :root {
+    --bg-primary: #090d16;
+    --bg-secondary: #111827;
+    --bg-card: #1f2937;
+    --accent: #38bdf8;
+    --accent-hover: #0ea5e9;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border: #374151;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+  body { background: var(--bg-primary); color: var(--text-main); padding: 24px 16px; min-height: 100vh; display: flex; justify-content: center; }
+  .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 20px; }
+  
+  header { display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); padding: 16px 24px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+  header h2 { font-size: 1.25rem; color: var(--accent); display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  header span { font-size: 0.85rem; color: var(--text-muted); background: var(--bg-card); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+
+  .card { background: var(--bg-secondary); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.3s ease; }
+  .card:hover { border-color: #4b5563; }
+  .card-title { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+  label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
+  input, select { width: 100%; padding: 10px 14px; margin-bottom: 14px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+  input:focus, select:focus { border-color: var(--accent); }
+  
+  .row-group { display: flex; gap: 10px; }
+  
+  button { background: var(--accent); color: #000; border: none; padding: 10px 16px; cursor: pointer; border-radius: 8px; font-weight: 600; font-size: 0.9rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s, transform 0.1s; }
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: scale(0.98); }
+
+  .btn-secondary { background: #334155; color: #fff; width: auto; padding: 6px 12px; font-size: 0.8rem; }
+  .btn-secondary:hover { background: #475569; }
+
+  .btn-delete { background: #ef4444; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-delete:hover { background: #dc2626; }
+  .btn-reset { background: #eab308; color: #000; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-suspend { background: #f97316; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-unsuspend { background: #10b981; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+  .btn-session { background: #6366f1; color: #fff; width: auto; padding: 5px 10px; font-size: 0.75rem; }
+
+  .url-box { background: var(--bg-primary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; color: var(--accent); word-break: break-all; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .lib-info-box { background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+
+  .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
+  th, td { border-bottom: 1px solid var(--border); padding: 10px 8px; text-align: left; }
+  th { background: var(--bg-card); color: var(--accent); font-weight: 600; }
+  
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+  .device-debug { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+  #msg, #uploadMsg { margin-top: 8px; font-size: 0.85rem; text-align: center; font-weight: 500; }
+  
+  .actions-cell { display: flex; flex-wrap: wrap; gap: 4px; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h2>Shadow License Admin</h2>
+  <header>
+    <h2><i data-lucide="shield-check"></i> Shadow Admin</h2>
+    <span>v2.0.51</span>
+  </header>
+
+  <!-- MANAJEMEN LIBRARY -->
   <div class="card">
-    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">📦 Manajemen Library .so / .bin</h3>
-    <div id="libUrlBox" style="font-size: 11px; margin-bottom: 8px; color: #38bdf8; word-break: break-all;">Library URL: Memuat...</div>
-    <button type="button" onclick="copyLibraryUrl()" style="background: #10b981; margin-bottom: 15px;">📋 Copy URL Library</button>
+    <div class="card-title"><i data-lucide="box"></i> Manajemen Library .so / .bin</div>
+    <div class="url-box">
+      <span id="libUrlBox">Library URL: Memuat...</span>
+      <button class="btn-secondary" onclick="copyLibraryUrl()"><i data-lucide="copy" style="width:14px;height:14px;"></i> Copy</button>
+    </div>
     <div class="lib-info-box" id="libInfoBox"><div><b>Status Library:</b> Memeriksa database...</div></div>
     <form id="formUploadLib">
       <label>Upload File Library Baru (.bin / .so):</label>
-      <input type="file" id="library_file" accept=".bin,.so" required style="margin-bottom: 10px;">
-      <button type="submit" style="background: #8b5cf6;">🚀 Upload Library ke DB</button>
+      <input type="file" id="library_file" accept=".bin,.so" required>
+      <button type="submit" style="background: #8b5cf6; color:#fff;"><i data-lucide="upload"></i> Upload Library ke DB</button>
     </form>
-    <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+    <div id="uploadMsg"></div>
   </div>
+
+  <!-- BUAT LICENSE KEY -->
   <div class="card">
-    <div id="apiUrlBox" style="font-size: 12px; margin-bottom: 10px; color: #38bdf8;">API URL: Memuat...</div>
+    <div class="card-title"><i data-lucide="key"></i> Buat License Key Baru</div>
+    <div class="url-box" id="apiUrlBox" style="margin-bottom: 14px;">API URL: Memuat...</div>
     <form id="formKey">
       <label>Custom License Key:</label>
-      <div style="display: flex; gap: 5px;">
+      <div class="row-group">
         <input type="text" id="license_key" placeholder="Contoh: RIO-ABC123XYZ" required style="margin-bottom:0;">
-        <button type="button" onclick="generateKey()" style="width: 100px;">Random</button>
+        <button type="button" onclick="generateKey()" style="width: 110px; background: #334155; color:#fff;"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Random</button>
       </div>
-      <div style="margin-top: 15px;">
+      <div style="margin-top: 14px;">
         <label id="durationLabel">Masa Aktif (Hari):</label>
         <input type="number" id="days_valid" value="30" min="1" required>
       </div>
@@ -229,174 +290,182 @@ app.get('/', requireAuth, (req, res) => {
       </select>
       <label>Maksimal Device (Max Devices):</label>
       <input type="number" id="max_devices" value="1" min="1" required>
-      <button type="submit">Simpan Key ke Database</button>
+      <button type="submit"><i data-lucide="plus-circle"></i> Simpan Key ke Database</button>
     </form>
-    <div id="msg" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+    <div id="msg"></div>
   </div>
+
+  <!-- DAFTAR KEY -->
   <div class="card">
-    <h3 style="color: #38bdf8; margin-top: 0; font-size: 14px; text-align: center;">Daftar Key & Device Terdaftar</h3>
-    <table>
-      <thead>
-        <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Sesi & Status</th><th>Aksi</th></tr>
-      </thead>
-      <tbody id="keyList">
-        <tr><td colspan="5" style="text-align: center; color: #888;">Memuat data...</td></tr>
-      </tbody>
-    </table>
+    <div class="card-title"><i data-lucide="list"></i> Daftar Key & Device Terdaftar</div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr><th>Key</th><th>Masa Aktif</th><th>Device Slot</th><th>Sesi & Status</th><th>Aksi</th></tr>
+        </thead>
+        <tbody id="keyList">
+          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Memuat data...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
+
 <script>
-const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
-const dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
-document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
-document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
+  lucide.createIcons();
+  const dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
+  const dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
+  document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
+  document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
 
-function copyLibraryUrl() {
-  navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
-}
-function updateDurationLabel() {
-  const unit = document.getElementById('duration_unit').value;
-  document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
-}
-function generateKey() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let res = 'RIO-';
-  for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
-  document.getElementById('license_key').value = res;
-}
-async function loadLibraryInfo() {
-  try {
-    const res = await fetch('/api/admin/lib-info');
-    const data = await res.json();
-    const box = document.getElementById('libInfoBox');
-    if(res.ok && data.ok && data.library) {
-      const lib = data.library;
-      box.innerHTML = \`<div>📁 <b>File:</b> \${lib.filename}</div><div>📏 <b>Ukuran:</b> \${lib.size} bytes</div><div>🔑 <b>SHA256:</b> <span style="color: #38bdf8;">\${lib.sha256}</span></div><div style="margin-top: 8px;"><button class="btn-delete" onclick="deleteLibrary()">Hapus Library Ini</button></div>\`;
-    } else {
-      box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
-    }
-  } catch (err) { document.getElementById('libInfoBox').innerText = 'Gagal memuat info library.'; }
-}
-async function deleteLibrary() {
-  if(!confirm('Yakin ingin menghapus library aktif?')) return;
-  const res = await fetch('/api/admin/delete-lib', { method: 'POST' });
-  const data = await res.json();
-  if(data.ok) { alert('Berhasil dihapus!'); loadLibraryInfo(); } else { alert('Gagal'); }
-}
-async function loadKeys() {
-  try {
-    const res = await fetch('/api/admin/list');
-    const data = await res.json();
-    const tbody = document.getElementById('keyList');
-    if(res.ok && data.ok && data.licenses) {
-      if(data.licenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">Belum ada key tersimpan.</td></tr>';
-        return;
+  function copyLibraryUrl() {
+    navigator.clipboard.writeText(dynamicLibUrl).then(() => alert('URL Library berhasil disalin!'));
+  }
+  function updateDurationLabel() {
+    const unit = document.getElementById('duration_unit').value;
+    document.getElementById('durationLabel').innerText = unit === 'minutes' ? 'Masa Aktif (Menit):' : 'Masa Aktif (Hari):';
+  }
+  function generateKey() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let res = 'RIO-';
+    for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+    document.getElementById('license_key').value = res;
+  }
+  async function loadLibraryInfo() {
+    try {
+      const res = await fetch('/api/admin/lib-info');
+      const data = await res.json();
+      const box = document.getElementById('libInfoBox');
+      if(res.ok && data.ok && data.library) {
+        const lib = data.library;
+        box.innerHTML = '<div>📁 <b>File:</b> ' + lib.filename + '</div><div>📏 <b>Ukuran:</b> ' + lib.size + ' bytes</div><div>🔑 <b>SHA256:</b> <span style="color: var(--accent);">' + lib.sha256 + '</span></div><div style="margin-top: 6px;"><button class="btn-delete" onclick="deleteLibrary()"><i data-lucide="trash-2" style="width:12px;height:12px;"></i> Hapus Library Ini</button></div>';
+        lucide.createIcons();
+      } else {
+        box.innerHTML = '<div style="color: #ef4444;">⚠️ Belum ada file library yang di-upload ke database.</div>';
       }
-      tbody.innerHTML = data.licenses.map(item => {
-        const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
-        const maxDev = item.max_devices || 1;
-        const isFull = devices.length >= maxDev;
-        const badgeColor = isFull ? '#ef4444' : '#38bdf8';
-        let deviceHtml = \`<span class="badge" style="border: 1px solid \${badgeColor}; color: \${badgeColor};">\${devices.length} / \${maxDev} Dev</span>\`;
-        if (devices.length > 0) {
-          deviceHtml += devices.map(d => \`<div class="device-debug">📱 \${d}</div>\`).join('');
-        } else {
-          deviceHtml += '<div style="font-size: 9px; color: #666; margin-top: 2px;">Belum ada device</div>';
-        }
-
-        let sessionStatus = '<span style="color: #10b981;">Aktif / Valid</span>';
-        if (item.suspended) {
-          sessionStatus = '<span style="color: #ef4444; font-weight: bold;">SUSPENDED</span>';
-        } else if (!item.session_token) {
-          sessionStatus = '<span style="color: #888;">Tidak ada sesi</span>';
-        } else if (item.session_expires_at && new Date() > new Date(item.session_expires_at)) {
-          sessionStatus = '<span style="color: #eab308;">Sesi Kedaluwarsa</span>';
-        }
-
-        const suspendBtn = item.suspended 
-          ? \`<button class="btn-unsuspend" onclick="toggleSuspend(\${item.id}, false)">Unsuspend</button>\`
-          : \`<button class="btn-suspend" onclick="toggleSuspend(\${item.id}, true)">Suspend</button>\`;
-
-        return \`<tr>
-          <td style="font-family: monospace; color: #38bdf8; font-weight: bold;">\${item.license_key}</td>
-          <td>\${item.days_valid} \${item.unit === 'minutes' ? 'Min' : 'Hari'}</td>
-          <td>\${deviceHtml}</td>
-          <td><div>\${sessionStatus}</div><div style="font-size:9px; color:#94a3b8; word-break:break-all;">Token: \${item.session_token ? item.session_token.substring(0,10)+'...' : '-'}</div></td>
-          <td>
-            \${suspendBtn}<br>
-            <button class="btn-session" onclick="resetSession(\${item.id})">Reset Sesi</button><br>
-            <button class="btn-reset" onclick="resetDevice(\${item.id})">Reset Dev</button><br>
-            <button class="btn-delete" onclick="deleteKey(\${item.id})">Hapus</button>
-          </td>
-        </tr>\`;
-      }).join('');
-    }
-  } catch(err) { console.error(err); }
-}
-async function deleteKey(id) {
-  if(!confirm('Yakin ingin menghapus key ini?')) return;
-  const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-  const data = await res.json();
-  if(data.ok) loadKeys(); else alert('Gagal');
-}
-async function resetDevice(id) {
-  if(!confirm('Reset Device ID?')) return;
-  const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-  const data = await res.json();
-  if(data.ok) loadKeys(); else alert('Gagal');
-}
-async function resetSession(id) {
-  if(!confirm('Reset Sesi untuk key ini?')) return;
-  const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-  const data = await res.json();
-  if(data.ok) loadKeys(); else alert('Gagal');
-}
-async function toggleSuspend(id, suspend) {
-  if(!confirm(suspend ? 'Suspend key ini?' : 'Unsuspend key ini?')) return;
-  const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
-  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-  const data = await res.json();
-  if(data.ok) loadKeys(); else alert('Gagal');
-}
-document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fileInput = document.getElementById('library_file');
-  const uploadMsg = document.getElementById('uploadMsg');
-  if (fileInput.files.length === 0) return alert('Pilih file!');
-  const formData = new FormData();
-  formData.append('library_file', fileInput.files[0]);
-  uploadMsg.style.color = '#ccc'; uploadMsg.innerText = 'Mengupload...';
-  try {
-    const res = await fetch('/api/admin/upload-lib', { method: 'POST', body: formData });
+    } catch (err) { document.getElementById('libInfoBox').innerText = 'Gagal memuat info library.'; }
+  }
+  async function deleteLibrary() {
+    if(!confirm('Yakin ingin menghapus library aktif?')) return;
+    const res = await fetch('/api/admin/delete-lib', { method: 'POST' });
     const data = await res.json();
-    if (res.ok && data.ok) {
-      uploadMsg.style.color = '#38bdf8'; uploadMsg.innerText = '✅ ' + data.message;
-      fileInput.value = ''; loadLibraryInfo();
-    } else { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ ' + (data.message || 'Gagal'); }
-  } catch (err) { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ Error'; }
-});
-document.getElementById('formKey').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const key = document.getElementById('license_key').value;
-  const days = document.getElementById('days_valid').value;
-  const unit = document.getElementById('duration_unit').value;
-  const max_devices = document.getElementById('max_devices').value;
-  const msg = document.getElementById('msg');
-  msg.style.color = '#ccc'; msg.innerText = 'Menyimpan...';
-  const res = await fetch('/api/admin/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
+    if(data.ok) { alert('Berhasil dihapus!'); loadLibraryInfo(); } else { alert('Gagal'); }
+  }
+  async function loadKeys() {
+    try {
+      const res = await fetch('/api/admin/list');
+      const data = await res.json();
+      const tbody = document.getElementById('keyList');
+      if(res.ok && data.ok && data.licenses) {
+        if(data.licenses.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Belum ada key tersimpan.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.licenses.map(item => {
+          const devices = item.device_id ? item.device_id.split(',').filter(Boolean) : [];
+          const maxDev = item.max_devices || 1;
+          const isFull = devices.length >= maxDev;
+          const badgeColor = isFull ? '#ef4444' : '#38bdf8';
+          let deviceHtml = '<span class="badge" style="border: 1px solid ' + badgeColor + '; color: ' + badgeColor + ';"><i data-lucide="smartphone" style="width:10px;height:10px;"></i> ' + devices.length + ' / ' + maxDev + ' Dev</span>';
+          if (devices.length > 0) {
+            deviceHtml += devices.map(d => '<div class="device-debug">📱 ' + d + '</div>').join('');
+          } else {
+            deviceHtml += '<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Belum ada device</div>';
+          }
+
+          let sessionStatus = '<span style="color: #10b981;">Aktif / Valid</span>';
+          if (item.suspended) {
+            sessionStatus = '<span style="color: #ef4444; font-weight: bold;">SUSPENDED</span>';
+          } else if (!item.session_token) {
+            sessionStatus = '<span style="color: var(--text-muted);">Tidak ada sesi</span>';
+          } else if (item.session_expires_at && new Date() > new Date(item.session_expires_at)) {
+            sessionStatus = '<span style="color: #eab308;">Sesi Kedaluwarsa</span>';
+          }
+
+          const suspendBtn = item.suspended 
+            ? '<button class="btn-unsuspend" onclick="toggleSuspend(' + item.id + ', false)">Unsuspend</button>'
+            : '<button class="btn-suspend" onclick="toggleSuspend(' + item.id + ', true)">Suspend</button>';
+
+          return '<tr>' +
+            '<td style="font-family: monospace; color: var(--accent); font-weight: bold;">' + item.license_key + '</td>' +
+            '<td>' + item.days_valid + ' ' + (item.unit === 'minutes' ? 'Min' : 'Hari') + '</td>' +
+            '<td>' + deviceHtml + '</td>' +
+            '<td><div>' + sessionStatus + '</div><div style="font-size:0.75rem; color:var(--text-muted);">Token: ' + (item.session_token ? item.session_token.substring(0,8)+'...' : '-') + '</div></td>' +
+            '<td><div class="actions-cell">' +
+              suspendBtn +
+              '<button class="btn-session" onclick="resetSession(' + item.id + ')">Reset Sesi</button>' +
+              '<button class="btn-reset" onclick="resetDevice(' + item.id + ')">Reset Dev</button>' +
+              '<button class="btn-delete" onclick="deleteKey(' + item.id + ')">Hapus</button>' +
+            '</div></td>' +
+          '</tr>';
+        }).join('');
+        lucide.createIcons();
+      }
+    } catch(err) { console.error(err); }
+  }
+  async function deleteKey(id) {
+    if(!confirm('Yakin ingin menghapus key ini?')) return;
+    const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const data = await res.json();
+    if(data.ok) loadKeys(); else alert('Gagal');
+  }
+  async function resetDevice(id) {
+    if(!confirm('Reset Device ID?')) return;
+    const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const data = await res.json();
+    if(data.ok) loadKeys(); else alert('Gagal');
+  }
+  async function resetSession(id) {
+    if(!confirm('Reset Sesi untuk key ini?')) return;
+    const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const data = await res.json();
+    if(data.ok) loadKeys(); else alert('Gagal');
+  }
+  async function toggleSuspend(id, suspend) {
+    if(!confirm(suspend ? 'Suspend key ini?' : 'Unsuspend key ini?')) return;
+    const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
+    const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const data = await res.json();
+    if(data.ok) loadKeys(); else alert('Gagal');
+  }
+  document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('library_file');
+    const uploadMsg = document.getElementById('uploadMsg');
+    if (fileInput.files.length === 0) return alert('Pilih file!');
+    const formData = new FormData();
+    formData.append('library_file', fileInput.files[0]);
+    uploadMsg.style.color = 'var(--text-muted)'; uploadMsg.innerText = 'Mengupload...';
+    try {
+      const res = await fetch('/api/admin/upload-lib', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        uploadMsg.style.color = 'var(--accent)'; uploadMsg.innerText = '✅ ' + data.message;
+        fileInput.value = ''; loadLibraryInfo();
+      } else { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ ' + (data.message || 'Gagal'); }
+    } catch (err) { uploadMsg.style.color = '#ef4444'; uploadMsg.innerText = '❌ Error'; }
   });
-  const data = await res.json();
-  if(res.ok && data.ok) {
-    msg.style.color = '#38bdf8'; msg.innerText = '✅ ' + data.message;
-    document.getElementById('license_key').value = ''; loadKeys();
-  } else { msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Gagal'); }
-});
-loadLibraryInfo();
-loadKeys();
+  document.getElementById('formKey').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const key = document.getElementById('license_key').value;
+    const days = document.getElementById('days_valid').value;
+    const unit = document.getElementById('duration_unit').value;
+    const max_devices = document.getElementById('max_devices').value;
+    const msg = document.getElementById('msg');
+    msg.style.color = 'var(--text-muted)'; msg.innerText = 'Menyimpan...';
+    const res = await fetch('/api/admin/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
+    });
+    const data = await res.json();
+    if(res.ok && data.ok) {
+      msg.style.color = 'var(--accent)'; msg.innerText = '✅ ' + data.message;
+      document.getElementById('license_key').value = ''; loadKeys();
+    } else { msg.style.color = '#ef4444'; msg.innerText = '❌ ' + (data.message || 'Gagal'); }
+  });
+  loadLibraryInfo();
+  loadKeys();
 </script>
 </body>
 </html>`);
@@ -521,9 +590,10 @@ app.post('/api/admin/create', requireAuth, async (req, res) => {
 });
 
 app.post('/api/v1/license.php', handleLicenseActivation);
+app.get('/api/v1/license.php', handleLicenseActivation);
 app.post('/v1/license.php', handleLicenseActivation);
+app.get('/v1/license.php', handleLicenseActivation);
 
-// Status / Refresh session endpoint
 app.get('/api/v1/status.php', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(500).json({ ok: false, message: "DB URL missing" });
@@ -542,8 +612,6 @@ app.get('/api/v1/status.php', async (req, res) => {
     if (r.suspended) return res.status(403).json({ ok: false, message: "Acesso suspenso pelo servidor." });
     if (r.expires_at && Date.now() > new Date(r.expires_at).getTime())
       return res.status(403).json({ ok: false, message: "Key expirada." });
-    if (r.device_id && !r.device_id.split(',').map(s=>s.trim()).includes(deviceId))
-      return res.status(403).json({ ok: false, message: "Dispositivo não autorizado." });
 
     const expiresTimestampSec = r.expires_at ? Math.floor(new Date(r.expires_at).getTime()/1000) : 0;
     const sessionExpiresSec = r.session_expires_at ? Math.floor(new Date(r.session_expires_at).getTime()/1000) : 0;
