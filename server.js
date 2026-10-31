@@ -29,16 +29,19 @@ const ADMIN_USER = process.env.ADMIN_USER || "shadow";
 const ADMIN_PASS = process.env.ADMIN_PASS || "rizky123@";
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
-let PRIVATE_KEY;
-try {
-  const kp = crypto.generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  });
-  PRIVATE_KEY = kp.privateKey;
-} catch (e) {
-  PRIVATE_KEY = process.env.PRIVATE_KEY || '';
+// Inisialisasi RSA Private Key secara aman agar tidak crash di environment serverless
+let PRIVATE_KEY = process.env.PRIVATE_KEY || '';
+if (!PRIVATE_KEY) {
+  try {
+    const kp = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+    PRIVATE_KEY = kp.privateKey;
+  } catch (e) {
+    console.error("Gagal generate RSA key otomatis:", e.message);
+  }
 }
 
 const activeAdminSessions = new Map();
