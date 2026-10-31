@@ -73,7 +73,7 @@ const requireAuth = (req, res, next) => {
     }
   } catch (err) {}
 
-  if (req.xhr || req.path.startsWith('/api/admin/')) {
+  if (req.xhr || req.headers['accept']?.includes('application/json') || req.path.startsWith('/api/admin/')) {
     return res.status(401).json({ ok: false, message: "Autentikasi diperlukan." });
   }
 
@@ -290,7 +290,7 @@ app.get('/login', (req, res) => {
     <h2>Shadow Admin</h2>
     <p id="loginSubtitle">Silakan login untuk mengelola lisensi</p>
   </div>
-  <form id="loginForm">
+  <form id="loginForm" autocomplete="on">
     <div class="input-group">
       <label id="usernameLabel">Username</label>
       <input type="text" id="username" name="username" autocomplete="username" required placeholder="Masukkan username">
@@ -345,10 +345,10 @@ app.get('/login', (req, res) => {
     const icon = document.getElementById('themeIcon');
     if (theme === 'light') {
       document.body.classList.add('light-mode');
-      icon.setAttribute('data-lucide', 'sun');
+      if (icon) icon.setAttribute('data-lucide', 'sun');
     } else {
       document.body.classList.remove('light-mode');
-      icon.setAttribute('data-lucide', 'moon');
+      if (icon) icon.setAttribute('data-lucide', 'moon');
     }
     lucide.createIcons();
   }
@@ -364,12 +364,19 @@ app.get('/login', (req, res) => {
     if (menu) menu.classList.remove('show');
 
     const l = loginI18n[currentLang];
-    document.getElementById('loginSubtitle').innerText = l.subtitle;
-    document.getElementById('usernameLabel').innerText = l.usernameLabel;
-    document.getElementById('username').placeholder = l.usernamePlaceholder;
-    document.getElementById('passwordLabel').innerText = l.passwordLabel;
-    document.getElementById('password').placeholder = l.passwordPlaceholder;
-    document.getElementById('btnText').innerText = l.loginBtn;
+    const sub = document.getElementById('loginSubtitle');
+    const uLabel = document.getElementById('usernameLabel');
+    const uInput = document.getElementById('username');
+    const pLabel = document.getElementById('passwordLabel');
+    const pInput = document.getElementById('password');
+    const bText = document.getElementById('btnText');
+
+    if (sub) sub.innerText = l.subtitle;
+    if (uLabel) uLabel.innerText = l.usernameLabel;
+    if (uInput) uInput.placeholder = l.usernamePlaceholder;
+    if (pLabel) pLabel.innerText = l.passwordLabel;
+    if (pInput) pInput.placeholder = l.passwordPlaceholder;
+    if (bText) bText.innerText = l.loginBtn;
   }
 
   function changeLanguage(lang) {
@@ -379,7 +386,7 @@ app.get('/login', (req, res) => {
   function toggleLangDropdown(e) {
     e.stopPropagation();
     const menu = document.getElementById('langDropdownMenu');
-    menu.classList.toggle('show');
+    if (menu) menu.classList.toggle('show');
   }
 
   window.addEventListener('click', (e) => {
@@ -398,10 +405,10 @@ app.get('/login', (req, res) => {
     const icon = document.getElementById('eyeIcon');
     if (pwd.type === 'password') {
       pwd.type = 'text';
-      icon.setAttribute('data-lucide', 'eye-off');
+      if (icon) icon.setAttribute('data-lucide', 'eye-off');
     } else {
       pwd.type = 'password';
-      icon.setAttribute('data-lucide', 'eye');
+      if (icon) icon.setAttribute('data-lucide', 'eye');
     }
     lucide.createIcons();
   }
@@ -816,16 +823,29 @@ app.get('/', requireAuth, (req, res) => {
   let dynamicApiUrl = '';
   let pendingAction = null;
 
+  async function apiFetch(url, options = {}) {
+    options.headers = options.headers || {};
+    if (CSRF_TOKEN && ['POST', 'PUT', 'DELETE'].includes(options.method?.toUpperCase())) {
+      options.headers['X-CSRF-Token'] = CSRF_TOKEN;
+    }
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    return res;
+  }
+
   function applyTheme(theme) {
     currentTheme = theme;
     localStorage.setItem('shadow_theme', theme);
     const icon = document.getElementById('themeIcon');
     if (theme === 'light') {
       document.body.classList.add('light-mode');
-      icon.setAttribute('data-lucide', 'sun');
+      if (icon) icon.setAttribute('data-lucide', 'sun');
     } else {
       document.body.classList.remove('light-mode');
-      icon.setAttribute('data-lucide', 'moon');
+      if (icon) icon.setAttribute('data-lucide', 'moon');
     }
     lucide.createIcons();
   }
@@ -859,7 +879,7 @@ app.get('/', requireAuth, (req, res) => {
   function toggleLangDropdown(e) {
     e.stopPropagation();
     const menu = document.getElementById('langDropdownMenu');
-    menu.classList.toggle('show');
+    if (menu) menu.classList.toggle('show');
   }
 
   window.addEventListener('click', (e) => {
@@ -871,7 +891,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function fetchCsrf() {
     try {
-      const res = await fetch('/api/admin/csrf');
+      const res = await apiFetch('/api/admin/csrf');
       const data = await res.json();
       if (res.ok && data.csrfToken) {
         CSRF_TOKEN = data.csrfToken;
@@ -881,6 +901,7 @@ app.get('/', requireAuth, (req, res) => {
 
   function showToast(message, isError = false) {
     const t = document.getElementById('toast');
+    if (!t) return;
     t.innerText = message;
     t.className = isError ? 'error show' : 'show';
     setTimeout(() => { t.className = ''; }, 3000);
@@ -919,28 +940,33 @@ app.get('/', requireAuth, (req, res) => {
 
   dynamicLibUrl = 'https://' + window.location.host + '/api/v1/library.php?version=2.0.51';
   dynamicApiUrl = 'https://' + window.location.host + '/api/v1/license.php';
-  document.getElementById('libUrlBox').innerText = 'Library URL: ' + dynamicLibUrl;
-  document.getElementById('apiUrlBox').innerText = 'API URL: ' + dynamicApiUrl;
+  const libBox = document.getElementById('libUrlBox');
+  const apiBox = document.getElementById('apiUrlBox');
+  if (libBox) libBox.innerText = 'Library URL: ' + dynamicLibUrl;
+  if (apiBox) apiBox.innerText = 'API URL: ' + dynamicApiUrl;
 
   function copyText(text, successMsg) {
     navigator.clipboard.writeText(text).then(() => showToast(successMsg));
   }
 
   function updateDurationLabel() {
-    const unit = document.getElementById('duration_unit').value;
-    document.getElementById('durationLabel').innerText = unit === 'minutes' ? adminI18n[currentLang].durationMinutes : adminI18n[currentLang].durationDays;
+    const unit = document.getElementById('duration_unit');
+    const label = document.getElementById('durationLabel');
+    if (!unit || !label) return;
+    label.innerText = unit.value === 'minutes' ? adminI18n[currentLang].durationMinutes : adminI18n[currentLang].durationDays;
   }
 
   function generateKey() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let res = 'RIO-';
     for(let i=0; i<10; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
-    document.getElementById('license_key').value = res;
+    const kInput = document.getElementById('license_key');
+    if (kInput) kInput.value = res;
   }
 
   async function logoutAdmin() {
     try {
-      await fetch('/api/admin/logout', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      await apiFetch('/api/admin/logout', { method: 'POST' });
       window.location.href = '/login';
     } catch (e) {
       window.location.href = '/login';
@@ -949,7 +975,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function loadLibraryInfo() {
     try {
-      const res = await fetch('/api/admin/lib-info');
+      const res = await apiFetch('/api/admin/lib-info');
       const data = await res.json();
       if(res.ok && data.ok && data.library) {
         cachedLibrary = data.library;
@@ -970,7 +996,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function deleteLibrary() {
     try {
-      const res = await fetch('/api/admin/delete-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      const res = await apiFetch('/api/admin/delete-lib', { method: 'POST' });
       const data = await res.json();
       if(data.ok) { showToast('Library berhasil dihapus!'); loadLibraryInfo(); } else { showToast(data.message || 'Gagal', true); }
     } catch (e) { showToast(adminI18n[currentLang].errorNetwork, true); }
@@ -978,8 +1004,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function loadKeys() {
     try {
-      const res = await fetch('/api/admin/list');
-      if (res.status === 401) { window.location.href = '/login'; return; }
+      const res = await apiFetch('/api/admin/list');
       const data = await res.json();
       if(res.ok && data.ok && data.licenses) {
         cachedLicenses = data.licenses;
@@ -1060,7 +1085,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function deleteKey(id) {
     try {
-      const res = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const res = await apiFetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       const data = await res.json();
       if(data.ok) { showToast(adminI18n[currentLang].successDeleteKey); loadKeys(); } else { showToast(data.message || 'Error', true); }
     } catch (e) { showToast(adminI18n[currentLang].errorNetwork, true); }
@@ -1068,7 +1093,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function resetDevice(id) {
     try {
-      const res = await fetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const res = await apiFetch('/api/admin/reset-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       const data = await res.json();
       if(data.ok) { showToast(adminI18n[currentLang].successResetDev); loadKeys(); } else { showToast(data.message || 'Error', true); }
     } catch (e) { showToast(adminI18n[currentLang].errorNetwork, true); }
@@ -1076,7 +1101,7 @@ app.get('/', requireAuth, (req, res) => {
 
   async function resetSession(id) {
     try {
-      const res = await fetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const res = await apiFetch('/api/admin/reset-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       const data = await res.json();
       if(data.ok) { showToast(adminI18n[currentLang].successResetSession); loadKeys(); } else { showToast(data.message || 'Error', true); }
     } catch (e) { showToast(adminI18n[currentLang].errorNetwork, true); }
@@ -1085,83 +1110,89 @@ app.get('/', requireAuth, (req, res) => {
   async function toggleSuspend(id, suspend) {
     const endpoint = suspend ? '/api/admin/suspend' : '/api/admin/unsuspend';
     try {
-      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ id }) });
+      const res = await apiFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       const data = await res.json();
       if(data.ok) { showToast(suspend ? adminI18n[currentLang].successSuspend : adminI18n[currentLang].successUnsuspend); loadKeys(); } else { showToast(data.message || 'Error', true); }
     } catch (e) { showToast(adminI18n[currentLang].errorNetwork, true); }
   }
 
-  document.getElementById('formUploadLib').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fileInput = document.getElementById('library_file');
-    const btn = document.getElementById('btnUploadLib');
-    const btnText = btn.querySelector('.btn-text');
-    const spinner = document.getElementById('uploadSpinner');
+  const uploadForm = document.getElementById('formUploadLib');
+  if (uploadForm) {
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('library_file');
+      const btn = document.getElementById('btnUploadLib');
+      const btnText = btn?.querySelector('.btn-text');
+      const spinner = document.getElementById('uploadSpinner');
 
-    if (fileInput.files.length === 0) return showToast(adminI18n[currentLang].selectFile, true);
-    const formData = new FormData();
-    formData.append('library_file', fileInput.files[0]);
+      if (!fileInput || fileInput.files.length === 0) return showToast(adminI18n[currentLang].selectFile, true);
+      const formData = new FormData();
+      formData.append('library_file', fileInput.files[0]);
 
-    btn.disabled = true;
-    btnText.style.display = 'none';
-    spinner.style.display = 'inline-block';
+      if (btn) btn.disabled = true;
+      if (btnText) btnText.style.display = 'none';
+      if (spinner) spinner.style.display = 'inline-block';
 
-    try {
-      const res = await fetch('/api/admin/upload-lib', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN }, body: formData });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        showToast('✅ ' + data.message);
-        fileInput.value = ''; 
-        loadLibraryInfo();
-      } else { 
-        showToast('❌ ' + (data.message || 'Error'), true); 
+      try {
+        const res = await apiFetch('/api/admin/upload-lib', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          showToast('✅ ' + data.message);
+          fileInput.value = ''; 
+          loadLibraryInfo();
+        } else { 
+          showToast('❌ ' + (data.message || 'Error'), true); 
+        }
+      } catch (err) { 
+        showToast('❌ ' + adminI18n[currentLang].errorNetwork, true); 
+      } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.style.display = 'inline';
+        if (spinner) spinner.style.display = 'none';
       }
-    } catch (err) { 
-      showToast('❌ ' + adminI18n[currentLang].errorNetwork, true); 
-    } finally {
-      btn.disabled = false;
-      btnText.style.display = 'inline';
-      spinner.style.display = 'none';
-    }
-  });
+    });
+  }
 
-  document.getElementById('formKey').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const key = document.getElementById('license_key').value;
-    const days = document.getElementById('days_valid').value;
-    const unit = document.getElementById('duration_unit').value;
-    const max_devices = document.getElementById('max_devices').value;
-    
-    const btn = document.getElementById('btnCreateKey');
-    const btnText = btn.querySelector('.btn-text');
-    const spinner = document.getElementById('createSpinner');
+  const keyForm = document.getElementById('formKey');
+  if (keyForm) {
+    keyForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const key = document.getElementById('license_key').value;
+      const days = document.getElementById('days_valid').value;
+      const unit = document.getElementById('duration_unit').value;
+      const max_devices = document.getElementById('max_devices').value;
+      
+      const btn = document.getElementById('btnCreateKey');
+      const btnText = btn?.querySelector('.btn-text');
+      const spinner = document.getElementById('createSpinner');
 
-    btn.disabled = true;
-    btnText.style.display = 'none';
-    spinner.style.display = 'inline-block';
+      if (btn) btn.disabled = true;
+      if (btnText) btnText.style.display = 'none';
+      if (spinner) spinner.style.display = 'inline-block';
 
-    try {
-      const res = await fetch('/api/admin/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
-      });
-      const data = await res.json();
-      if(res.ok && data.ok) {
-        showToast('✅ ' + data.message);
-        document.getElementById('license_key').value = ''; 
-        loadKeys();
-      } else { 
-        showToast('❌ ' + (data.message || 'Error'), true); 
+      try {
+        const res = await apiFetch('/api/admin/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ license_key: key, days_valid: days, unit: unit, max_devices: max_devices })
+        });
+        const data = await res.json();
+        if(res.ok && data.ok) {
+          showToast('✅ ' + data.message);
+          document.getElementById('license_key').value = ''; 
+          loadKeys();
+        } else { 
+          showToast('❌ ' + (data.message || 'Error'), true); 
+        }
+      } catch (err) { 
+        showToast('❌ ' + adminI18n[currentLang].errorNetwork, true); 
+      } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.style.display = 'inline';
+        if (spinner) spinner.style.display = 'none';
       }
-    } catch (err) { 
-      showToast('❌ ' + adminI18n[currentLang].errorNetwork, true); 
-    } finally {
-      btn.disabled = false;
-      btnText.style.display = 'inline';
-      spinner.style.display = 'none';
-    }
-  });
+    });
+  }
 
   fetchCsrf().then(() => {
     loadLibraryInfo();
