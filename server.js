@@ -43,45 +43,90 @@ if (!PRIVATE_KEY) {
   }
 }
 
+
 async function getAdminSession(sql, token) {
   if (!token) return null;
+
+  // Pastikan tabel sesi tersedia sebelum membaca sesi.
+  await sql`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      session_token TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      csrf_token TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
   const rows = await sql`
     SELECT username, csrf_token, expires_at
     FROM admin_sessions
-    WHERE session_token = ${token} AND expires_at > NOW()
+    WHERE session_token = ${token}
+      AND expires_at > NOW()
     LIMIT 1
   `;
+
   return rows[0] || null;
 }
 
 const requireAuth = async (req, res, next) => {
   try {
     if (!process.env.DATABASE_URL) {
-      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+      console.error("AUTH ERROR: DATABASE_URL belum tersedia");
+      return res.status(500).json({
+        ok: false,
+        message: "DATABASE_URL belum diset di Vercel."
+      });
     }
 
     const token = req.cookies && req.cookies.admin_session;
+    if (!token) {
+      if (req.xhr || req.headers['accept']?.includes('application/json') ||
+          req.path.startsWith('/api/admin/')) {
+        return res.status(401).json({
+          ok: false,
+          message: "Autentikasi diperlukan."
+        });
+      }
+      return res.redirect('/login');
+    }
+
     const sql = neon(process.env.DATABASE_URL);
     const session = await getAdminSession(sql, token);
 
-    if (session) {
-      if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-        const clientCsrf = req.headers['x-csrf-token'] || (req.body && req.body._csrf);
-        if (!clientCsrf || clientCsrf !== session.csrf_token) {
-          return res.status(403).json({ ok: false, message: "CSRF token tidak valid!" });
-        }
+    if (!session) {
+      if (req.xhr || req.headers['accept']?.includes('application/json') ||
+          req.path.startsWith('/api/admin/')) {
+        return res.status(401).json({
+          ok: false,
+          message: "Sesi login tidak ditemukan atau sudah kedaluwarsa."
+        });
       }
-      return next();
+      return res.redirect('/login');
     }
-  } catch (err) {
-    console.error("Auth middleware error:", err.message);
-    return res.status(500).json({ ok: false, message: "Gagal memeriksa sesi login." });
-  }
 
-  if (req.xhr || req.headers['accept']?.includes('application/json') || req.path.startsWith('/api/admin/')) {
-    return res.status(401).json({ ok: false, message: "Autentikasi diperlukan." });
+    if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+      const clientCsrf =
+        req.headers['x-csrf-token'] ||
+        (req.body && req.body._csrf);
+
+      if (!clientCsrf || clientCsrf !== session.csrf_token) {
+        return res.status(403).json({
+          ok: false,
+          message: "CSRF token tidak valid!"
+        });
+      }
+    }
+
+    return next();
+
+  } catch (err) {
+    console.error("ADMIN AUTH DATABASE ERROR:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Database session error. Periksa Vercel Runtime Logs."
+    });
   }
-  return res.redirect('/login');
 };
 
 async function initDB(sql) {
