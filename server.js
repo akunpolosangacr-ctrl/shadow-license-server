@@ -43,40 +43,44 @@ if (!PRIVATE_KEY) {
   }
 }
 
-const activeAdminSessions = new Map();
-
-function toUrlSafeBase64(buffer) {
-  return buffer.toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+async function getAdminSession(sql, token) {
+  if (!token) return null;
+  const rows = await sql`
+    SELECT username, csrf_token, expires_at
+    FROM admin_sessions
+    WHERE session_token = ${token} AND expires_at > NOW()
+    LIMIT 1
+  `;
+  return rows[0] || null;
 }
 
-function generateAdminSessionToken(username) {
-  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
-  hmac.update(username + Date.now().toString());
-  return hmac.digest('hex');
-}
-
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
   try {
-    const sessionToken = req.cookies && req.cookies.admin_session;
-    if (sessionToken && activeAdminSessions.has(sessionToken)) {
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    }
+
+    const token = req.cookies && req.cookies.admin_session;
+    const sql = neon(process.env.DATABASE_URL);
+    const session = await getAdminSession(sql, token);
+
+    if (session) {
       if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-        const clientCsrf = req.headers['x-csrf-token'] || req.body._csrf;
-        const storedCsrf = activeAdminSessions.get(sessionToken).csrfToken;
-        if (!clientCsrf || clientCsrf !== storedCsrf) {
+        const clientCsrf = req.headers['x-csrf-token'] || (req.body && req.body._csrf);
+        if (!clientCsrf || clientCsrf !== session.csrf_token) {
           return res.status(403).json({ ok: false, message: "CSRF token tidak valid!" });
         }
       }
       return next();
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error("Auth middleware error:", err.message);
+    return res.status(500).json({ ok: false, message: "Gagal memeriksa sesi login." });
+  }
 
   if (req.xhr || req.headers['accept']?.includes('application/json') || req.path.startsWith('/api/admin/')) {
     return res.status(401).json({ ok: false, message: "Autentikasi diperlukan." });
   }
-
   return res.redirect('/login');
 };
 
@@ -106,6 +110,14 @@ async function initDB(sql) {
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ NULL`;
     await sql`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS suspended BOOLEAN DEFAULT FALSE`;
   } catch (e) {}
+
+  await sql`CREATE TABLE IF NOT EXISTS admin_sessions (
+    session_token TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    csrf_token TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+  )`;
 }
 
 async function handleLicenseActivation(req, res) {
@@ -454,37 +466,80 @@ app.get('/login', (req, res) => {
 </html>`);
 });
 
-app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body;
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
-    const token = generateAdminSessionToken(username);
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ ok: false, message: "DATABASE_URL belum diset!" });
+    }
+
+    if (username !== ADMIN_USER || password !== ADMIN_PASS) {
+      return res.status(401).json({ ok: false, message: "Username atau password salah!" });
+    }
+
+    const sql = neon(process.env.DATABASE_URL);
+    await initDB(sql);
+
+    const token = crypto.randomBytes(32).toString('hex');
     const csrfToken = crypto.randomBytes(24).toString('hex');
-    activeAdminSessions.set(token, { username, csrfToken, createdAt: Date.now() });
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await sql`
+      INSERT INTO admin_sessions (session_token, username, csrf_token, expires_at)
+      VALUES (${token}, ${ADMIN_USER}, ${csrfToken}, ${expiresAt.toISOString()})
+    `;
 
     res.cookie('admin_session', token, {
       httpOnly: true,
       secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
       sameSite: 'lax',
+      path: '/',
       maxAge: 24 * 60 * 60 * 1000
     });
-    return res.json({ ok: true, csrfToken });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin login error:", err.message);
+    return res.status(500).json({ ok: false, message: "Gagal membuat sesi login." });
   }
-  return res.status(401).json({ ok: false, message: "Username atau password salah!" });
 });
 
-app.post('/api/admin/logout', requireAuth, (req, res) => {
-  const token = req.cookies && req.cookies.admin_session;
-  if (token) {
-    activeAdminSessions.delete(token);
+app.post('/api/admin/logout', requireAuth, async (req, res) => {
+  try {
+    const token = req.cookies && req.cookies.admin_session;
+    if (token && process.env.DATABASE_URL) {
+      const sql = neon(process.env.DATABASE_URL);
+      await sql`DELETE FROM admin_sessions WHERE session_token = ${token}`;
+    }
+
+    res.clearCookie('admin_session', {
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax',
+      path: '/'
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, message: "Gagal mengakhiri sesi." });
   }
-  res.clearCookie('admin_session');
-  return res.json({ ok: true });
 });
 
-app.get('/api/admin/csrf', requireAuth, (req, res) => {
-  const token = req.cookies && req.cookies.admin_session;
-  const session = activeAdminSessions.get(token);
-  return res.json({ ok: true, csrfToken: session ? session.csrfToken : '' });
+app.get('/api/admin/csrf', requireAuth, async (req, res) => {
+  try {
+    const token = req.cookies && req.cookies.admin_session;
+    const sql = neon(process.env.DATABASE_URL);
+    const session = await getAdminSession(sql, token);
+
+    if (!session) {
+      return res.status(401).json({ ok: false, message: "Sesi tidak ditemukan." });
+    }
+
+    return res.json({ ok: true, csrfToken: session.csrf_token });
+  } catch (err) {
+    return res.status(500).json({ ok: false, message: "Gagal mengambil CSRF token." });
+  }
 });
 
 // ==================== ADMIN PANEL HTML & ROUTES ====================
